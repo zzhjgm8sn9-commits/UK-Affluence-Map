@@ -371,7 +371,7 @@ than cost, CACI Paycheck is the honest answer.
 
 ## Bank branches and catchment
 
-4,701 GB branches across 25 filterable brands, from OpenStreetMap. Select any
+4,698 GB branches across 25 filterable brands, from OpenStreetMap. Select any
 combination of brands, set a catchment radius (0.5–15 km), and the map reports
 the population reached and its modelled income distribution.
 
@@ -380,11 +380,48 @@ easier to hit than dots and read at a glance in a cluster. **Click a pin** to
 measure that branch on its own; **click the sea** to clear the selection and
 return to the whole network.
 
+### Branch labels
+
 Each pin is labelled by street — "Mosley Street, Manchester" rather than just
 "Barclays" — which is what actually tells two branches of the same brand apart.
-OSM carries `addr:street` for 57% of them; the rest fall back to the place name
-recovered from their small area's name ("Manchester 054C" → "Manchester"), so
-every pin gets something useful rather than a bare brand.
+
+OSM carries `addr:street` for only 56% of branches. Falling back to the place
+name recovered from the small area ("Manchester 054C" → "Manchester") is not
+enough on its own: it left 832 branches (18%) sharing a label with another of
+the same brand, including five Barclays all reading "Wirral".
+
+So for every branch without an address, the pipeline asks OSM what road it
+actually sits on. The branches are themselves OSM objects, so their ids seed an
+Overpass set and `around.set:` finds named highways near each one individually,
+with the nearest matched by point-to-segment distance in a local metric frame.
+
+> A list of coordinates does **not** work here. Overpass reads a
+> multi-coordinate `around` as a *polyline* and searches near that line rather
+> than near each point, which returns nothing useful. Seeding the set from
+> object ids is the correct idiom.
+
+Where two branches of a brand still collide — genuinely both on a "High Street"
+in the same authority — a postcode is appended, taken from OSM where present and
+otherwise from the nearest live postcode in the ONSPD.
+
+Two smaller fixes fell out of checking the result:
+
+* **"Other" branches name their real brand.** That bucket holds 257 distinct
+  banks, so two of them on one street looked like a duplicate when they were
+  nothing of the kind — Punjab National Bank and Bank of India both sit on
+  Belgrave Road in Leicester. Labels there read "Bank of India — Belgrave Road,
+  Leicester".
+* **Duplicate mappings are removed.** A bank often appears in OSM both as a node
+  and as the building way around it. Two entries of the same brand within 40 m
+  are treated as one; three were dropped. Left in, they inflate branch counts and
+  double-weight that spot in a catchment.
+
+Result: **4,698 branches, 95% labelled with a real street, and no two branches of
+a brand sharing a label.** 105 fall back to a postcode tiebreak.
+
+This is the only slow step in the pipeline. Overpass rate-limits hard, so
+results are cached after every batch and a throttled run resumes rather than
+starting over.
 
 ### A deliberate palette exception
 
@@ -411,6 +448,35 @@ apportioning by overlap and hoping.
 Overlapping catchments are **unioned, not summed**, so a person served by three
 branches is counted once. This matters: summing per-branch catchments would
 roughly double the apparent reach of a dense urban network.
+
+### Composition vs coverage
+
+The band percentages answer two different questions, and the denominator is the
+whole difference. A toggle switches between them.
+
+**Composition** — of the people this network reaches, how are they distributed?
+The denominator is the catchment population, so the bands sum to 100%. Answers
+"what does this network's customer base look like?"
+
+**Coverage** — of all GB adults in each band, how many does this network reach?
+The denominator is the national total for that band. Answers "what share of the
+country's high earners can this network get to?"
+
+Coverage is usually the more strategic view. HSBC's 369 branches at a 10 km
+radius reach 42.0m adults — 79.1% of GB — but **82.4% of everyone on £100k+**,
+and coverage climbs steadily with income:
+
+| Band | Share of that band reached |
+|---|---|
+| £50k–75k | 78.1% |
+| £75k–100k | 79.7% |
+| £100k–125k | 80.8% |
+| £125k–200k | 82.1% |
+| £200k+ | **85.3%** |
+
+Composition bars scale to the largest band, because one band always dominates
+and absolute widths would be unreadable. Coverage bars scale to a true 100%,
+because there the absolute level is the point.
 
 Areas are indexed into a 5 km grid and distances use a local equirectangular
 projection rather than great-circle maths — under a tenth of a percent error at

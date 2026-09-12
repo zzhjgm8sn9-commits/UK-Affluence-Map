@@ -254,3 +254,19 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 }
 #catchment-stats .bands h2 { margin-bottom: 2px; text-transform: none;
   font-size: 12.5px; letter-spacing: 0; color: var(--text-primary); }
+
+/* ---------- catchment stats mode toggle ---------- */
+.stats-mode {
+  display: flex; gap: 0; margin: 2px 0 12px;
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.stats-mode button {
+  flex: 1; width: auto; border: none; border-radius: 0;
+  font-size: 11px; padding: 5px 6px;
+  background: var(--surface-1); color: var(--text-secondary);
+}
+.stats-mode button + button { border-left: 1px solid var(--border); }
+.stats-mode button.on {
+  background: var(--accent); color: #fff; font-weight: 600;
+}
+.stats-mode button.on:hover { background: var(--accent); }

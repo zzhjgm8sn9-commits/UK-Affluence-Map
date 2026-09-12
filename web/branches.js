@@ -74,6 +74,10 @@ const branchState = {
   covered: null,      // Uint8Array flag per area
   lastTotals: null,
   byKey: null,        // feature id -> branch record
+  national: null,     // GB band totals, the coverage denominator
+  // 'composition' = of the people reached, how are they distributed?
+  // 'coverage'    = of GB's people in each band, how many are reached?
+  statsMode: 'composition',
 };
 
 function brandColour(brand) {
@@ -460,7 +464,28 @@ function renderCatchmentStats(branches) {
 
   const labels = state.bandLabels || [];
   const above100k = t.bands.slice(5).reduce((s, v) => s + v, 0);
+  const national = nationalBandTotals();
+  const coverage = branchState.statsMode === 'coverage';
+
+  // Two different questions, and the denominator is the whole difference:
+  //   composition - of the people this network reaches, how many are rich?
+  //   coverage    - of the rich people in GB, how many does it reach?
+  const denom = (k) => coverage ? national.bands[k] : t.adults;
+  const headline = coverage
+    ? (national.above100k ? 100 * above100k / national.above100k : 0)
+    : (t.adults ? 100 * above100k / t.adults : 0);
+
+  // Composition bars scale to the biggest band, because one band always
+  // dominates and absolute widths would be unreadable. Coverage bars scale to
+  // a true 100%, because the absolute level is the point.
   const peak = Math.max(...t.bands);
+  const barWidth = (k) => {
+    if (coverage) {
+      const d = national.bands[k];
+      return d > 0 ? 100 * t.bands[k] / d : 0;
+    }
+    return peak > 0 ? 100 * t.bands[k] / peak : 0;
+  };
 
   const heading = focused
     ? '<h2>' + focused.n + '</h2>' +
@@ -469,38 +494,87 @@ function renderCatchmentStats(branches) {
         ' &middot; single branch</div>'
     : '<h2>Catchment reach</h2>';
 
-  const rows = focused
-    ? [['Radius', branchState.radiusKm.toFixed(1) + ' km'],
-       ['Small areas covered', t.areas.toLocaleString('en-GB')],
-       ['Adults reached', fmt.count(t.adults)],
-       ['Adults on £100k+', fmt.count(above100k) + ' (' +
-         (t.adults ? (100 * above100k / t.adults).toFixed(1) : '0.0') + '%)']]
-    : [['Branches', branches.length.toLocaleString('en-GB')],
-       ['Small areas covered', t.areas.toLocaleString('en-GB')],
-       ['Adults reached', fmt.count(t.adults)],
-       ['Adults on £100k+', fmt.count(above100k) + ' (' +
-         (t.adults ? (100 * above100k / t.adults).toFixed(1) : '0.0') + '%)']];
+  const above100kLabel = coverage
+    ? 'Share of GB £100k+ reached'
+    : 'Adults on £100k+';
+  const above100kValue = coverage
+    ? headline.toFixed(1) + '% (' + fmt.count(above100k) + ')'
+    : fmt.count(above100k) + ' (' + headline.toFixed(1) + '%)';
+
+  const rows = [
+    focused
+      ? ['Radius', branchState.radiusKm.toFixed(1) + ' km']
+      : ['Branches', branches.length.toLocaleString('en-GB')],
+    ['Small areas covered', t.areas.toLocaleString('en-GB')],
+    ['Adults reached', fmt.count(t.adults) +
+      (coverage && national.adults
+        ? ' (' + (100 * t.adults / national.adults).toFixed(1) + '% of GB)' : '')],
+    [above100kLabel, above100kValue],
+  ];
 
   host.innerHTML =
     '<div class="bands">' + heading +
+    '<div class="stats-mode">' +
+      '<button type="button" data-mode="composition"' +
+        (coverage ? '' : ' class="on"') + '>Composition</button>' +
+      '<button type="button" data-mode="coverage"' +
+        (coverage ? ' class="on"' : '') + '>Coverage</button>' +
+    '</div>' +
     '<dl class="sel-rows">' + rows.map(([k, v]) =>
       '<div class="sel-row"><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('') + '</dl>' +
     labels.map((label, k) => {
       const v = t.bands[k];
-      const pct = t.adults ? 100 * v / t.adults : 0;
-      const width = peak > 0 ? 100 * v / peak : 0;
+      const d = denom(k);
+      const pct = d > 0 ? 100 * v / d : 0;
       return '<div class="band-row">' +
         '<span class="band-label">' + label + '</span>' +
-        '<span class="band-bar"><i style="width:' + width.toFixed(1) + '%"></i></span>' +
+        '<span class="band-bar"><i style="width:' + barWidth(k).toFixed(1) + '%"></i></span>' +
         '<span class="band-pct">' + pct.toFixed(1) + '%</span>' +
         '<span class="band-n">' + fmt.count(v) + '</span>' +
         '</div>';
     }).join('') +
+    '<p class="legend-note">' + (coverage
+      ? 'Percentages are the share of <em>all GB adults in that band</em> who ' +
+        'fall inside the catchment.'
+      : 'Percentages are the share of <em>the population reached</em> that sits ' +
+        'in each band.') + '</p>' +
     '<p class="legend-note">' + (focused
       ? 'This branch only. Click the sea to go back to the whole selection.'
       : 'Union of all selected catchments, so overlapping branches are counted ' +
         'once. An area is in or out by its centre point.') + '</p>' +
     '</div>';
+
+  const modes = host.querySelector('.stats-mode');
+  if (modes) {
+    modes.onclick = (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      branchState.statsMode = btn.dataset.mode;
+      renderCatchmentStats(branches);
+    };
+  }
+}
+
+/** GB totals per income band, for the coverage denominator. Computed once. */
+function nationalBandTotals() {
+  if (branchState.national) return branchState.national;
+
+  const labels = state.bandLabels || [];
+  const sum = (arr) => {
+    let s = 0;
+    if (arr) for (let i = 0; i < arr.length; i++) {
+      if (Number.isFinite(arr[i])) s += arr[i];
+    }
+    return s;
+  };
+
+  const bands = labels.map((_, k) => sum(state.values['band_' + k]));
+  branchState.national = {
+    bands,
+    adults: sum(state.values.adults),
+    above100k: bands.slice(5).reduce((s, v) => s + v, 0),
+  };
+  return branchState.national;
 }
 
 /** Clear both the area selection and the focused branch. */
