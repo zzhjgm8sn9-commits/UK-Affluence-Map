@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UK Affluence Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.1/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <h1>UK Affluence Map</h1>
+      <p>43,064 small areas &middot; Great Britain</p>
+    </div>
+
+    <div class="panel">
+      <h2>Colour by</h2>
+      <select id="metric"></select>
+    </div>
+
+    <div class="panel" id="weights-panel" hidden>
+      <h2>Index weights</h2>
+      <div id="weights"></div>
+      <button id="reset-weights" type="button">Reset to defaults</button>
+    </div>
+
+    <div class="panel">
+      <h2>Legend</h2>
+      <div id="legend"></div>
+    </div>
+
+    <div class="panel" id="selection">
+      <h2>Selected area</h2>
+      <p class="empty">Click an area on the map.</p>
+    </div>
+
+    <div class="panel" id="branches"></div>
+
+    <div class="panel" id="rankings"></div>
+
+    <div class="panel">
+      <h2>Sources</h2>
+      <p class="legend-note">
+        Boundaries: ONS LSOA 2021 (England &amp; Wales) and Scottish Government
+        Data Zones 2022, both Open Government Licence v3.
+      </p>
+    </div>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="toolbar">
+      <button id="toggle-base" type="button">Basemap</button>
+      <button id="toggle-theme" type="button">Theme</button>
+    </div>
+    <div id="tooltip"></div>
+    <div id="status">Loading boundaries&hellip;</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.1/maplibre-gl.js"></script>
+<script src="branches.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
