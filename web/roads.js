@@ -57,7 +57,7 @@ function roadWidth(scale, extra) {
 async function initRoads() {
   let data;
   try {
-    const resp = await fetch('data/gb_roads.geojson', { cache: 'no-store' });
+    const resp = await fetch('data/gb_roads.json', { cache: 'no-store' });
     if (!resp.ok) return;
     data = await resp.json();
   } catch (err) {

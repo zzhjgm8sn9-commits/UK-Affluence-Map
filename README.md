@@ -184,7 +184,7 @@ web/
 
 ### Why geometry and attributes are separate files
 
-`gb_areas.geojson` holds geometry only; `gb_metrics.json` holds a columnar
+`gb_areas.json` holds geometry only; `gb_metrics.json` holds a columnar
 attribute table keyed by the same area codes. The topology is expensive to parse
 and almost never changes, while metrics are rebuilt constantly. Keeping them
 apart means re-weighting the index repaints the map without re-parsing 43,064
@@ -733,12 +733,33 @@ visitor can sit on a cached `app.js` indefinitely and see none of your changes.
 <https://app.netlify.com/drop> and it returns a public URL. No account needed to
 start, no CLI, and it serves gzip and brotli automatically.
 
-**GitHub Pages** works too, from a `gh-pages` branch containing the contents of
-`dist/`. Keep the generated data off `main` — it is reproducible from the
-pipeline and would otherwise add 117 MB to the history on every rebuild.
+**GitHub Pages** is scripted:
+
+```bash
+python deploy_gh_pages.py https://github.com/YOU/uk-affluence-map.git
+```
+
+That turns `dist/` into its own throwaway repository with a single commit and
+force-pushes it to `gh-pages`. The single-commit-force-push is deliberate:
+committing 117 MB of generated data to `main` would add that much to the history
+on every rebuild, for files reproducible from the pipeline in a few minutes. The
+main repository is never touched — no worktrees, no branch switching, nothing to
+clean up if it goes wrong.
+
+Then enable Pages in the repository settings: *Deploy from a branch*, branch
+`gh-pages`, folder `/ (root)`.
+
+Largest file is `gb_roads.json` at 34.9 MB, comfortably inside GitHub's 100 MB
+hard limit and below the 50 MB warning threshold. The deploy script checks this
+before pushing.
 
 > **Cloudflare Pages will not work** without changes: it caps individual files
-> at 25 MB and `gb_roads.geojson` is 34.9 MB.
+> at 25 MB and `gb_roads.json` is 34.9 MB.
+
+The geometry files are `.json` rather than `.geojson` on purpose. GitHub Pages
+gzips on the fly by content type, and `application/geo+json` is not reliably on
+that list — as `.geojson` the 34.9 MB road file risked being served
+uncompressed.
 
 Relative paths are used throughout, so serving from a subdirectory
 (`username.github.io/uk-affluence-map/`) works without configuration.

@@ -95,7 +95,7 @@ function formatValue(key, v) {
 
 async function loadData() {
   setStatus('Loading boundaries…');
-  const geojson = await fetch('data/gb_areas.geojson', {cache: 'no-store'}).then((r) => {
+  const geojson = await fetch('data/gb_areas.json', {cache: 'no-store'}).then((r) => {
     if (!r.ok) throw new Error('boundaries: HTTP ' + r.status);
     return r.json();
   });

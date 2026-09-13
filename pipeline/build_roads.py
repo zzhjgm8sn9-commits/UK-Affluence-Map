@@ -23,7 +23,7 @@ name and number cuts the feature count enormously and, more importantly, stops
 MapLibre trying to label the same street forty times along its length.
 
 Output:
-  web/data/gb_roads.geojson
+  web/data/gb_roads.json
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ def main() -> None:
         merged["road_number"].astype(str).str.len() > 0, merged["road_name"])
 
     out_dir = WEB / "data"
-    dest = out_dir / "gb_roads.geojson"
+    dest = out_dir / "gb_roads.json"
     if dest.exists():
         dest.unlink()
     merged[["road_class", "road_number", "road_name", "label", "geometry"]].to_file(

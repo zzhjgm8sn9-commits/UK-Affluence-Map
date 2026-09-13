@@ -26,13 +26,16 @@ ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 DIST = ROOT / "dist"
 
+# The geometry files are .json rather than .geojson deliberately: GitHub Pages
+# gzips on the fly by content type, and application/geo+json is not reliably on
+# that list. As .geojson the 34.9 MB road file could be served uncompressed.
 LOCAL_ASSET = re.compile(r'(src|href)="(?!https?:|//)([^"?]+\.(?:js|css))"')
 
 REQUIRED = [
     "index.html", "app.js", "branches.js", "roads.js", "search.js", "style.css",
-    "data/gb_areas.geojson", "data/gb_metrics.json", "data/gb_income.json",
+    "data/gb_areas.json", "data/gb_metrics.json", "data/gb_income.json",
     "data/gb_branches.json", "data/gb_places.json", "data/gb_search.json",
-    "data/gb_roads.geojson",
+    "data/gb_roads.json",
 ]
 
 

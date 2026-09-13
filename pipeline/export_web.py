@@ -26,7 +26,7 @@ only accurate to a couple of hundred metres.
 If the map ever feels heavy, the next step is tippecanoe -> PMTiles under WSL.
 
 Output:
-  web/data/gb_areas.geojson
+  web/data/gb_areas.json
 """
 
 from __future__ import annotations
@@ -106,7 +106,7 @@ def main() -> None:
 
     out_dir = WEB / "data"
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / "gb_areas.geojson"
+    dest = out_dir / "gb_areas.json"
     if dest.exists():
         dest.unlink()
 
