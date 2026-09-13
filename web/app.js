@@ -696,7 +696,17 @@ function attachToolbar() {
       getComputedStyle(document.documentElement).getPropertyValue('--surface-1').trim());
     applyColours();
     if (typeof applyPlaceLabelColours === 'function') applyPlaceLabelColours();
+    if (typeof applyRoadColours === 'function') applyRoadColours();
   };
+
+  const roadsBtn = $('#toggle-roads');
+  if (roadsBtn) {
+    roadsBtn.onclick = () => {
+      if (typeof setRoadsVisible !== 'function') return;
+      setRoadsVisible(!roadState.visible);
+      roadsBtn.classList.toggle('off', !roadState.visible);
+    };
+  }
 
   $('#toggle-base').onclick = () => {
     state.basemap = !state.basemap;
@@ -782,8 +792,10 @@ async function main() {
       }
       paintMap();
       setStatus(null);
-      const places = (typeof initPlaces === 'function')
-        ? initPlaces() : Promise.resolve();
+      const roads = (typeof initRoads === 'function')
+        ? initRoads() : Promise.resolve();
+      const places = roads.then(() =>
+        (typeof initPlaces === 'function') ? initPlaces() : undefined);
       places.then(() => {
         if (typeof initBranches === 'function') initBranches();
         if (typeof initSearch === 'function') initSearch();

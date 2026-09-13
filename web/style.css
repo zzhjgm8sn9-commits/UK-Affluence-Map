@@ -304,3 +304,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .search-detail { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+/* A toolbar button that is toggled off reads as inactive rather than missing. */
+.toolbar button.off { opacity: .55; }

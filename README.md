@@ -121,6 +121,10 @@ Run in order. Each step caches, so re-runs are cheap.
 ./.venv/Scripts/python.exe pipeline/build_connections.py
 ```
 
+```bash
+./.venv/Scripts/python.exe pipeline/build_roads.py
+```
+
 Downloads are cached in `data/raw/` and never re-fetched, so re-runs are cheap
 and work offline.
 
@@ -162,6 +166,7 @@ pipeline/
   build_places.py       OSM city labels + vendored glyphs -> web/data
   build_search.py       postcode chunks + place index -> web/data
   build_connections.py  NaPTAN travel-connections rating -> web/data
+  build_roads.py        OS Open Roads major-road overlay -> web/data
 data/
   raw/                  downloaded sources, cached
   interim/              harmonised intermediates (parquet)
@@ -170,6 +175,7 @@ web/
   index.html            map shell
   app.js                map logic
   branches.js           branch layer, catchment analysis, place labels
+  roads.js              major-road overlay
   search.js             postcode / place / branch search
   style.css             styling
   fonts/                generated: vendored Noto Sans glyph ranges
@@ -522,6 +528,63 @@ than the branch estate as a whole.
 - **Radius, not drive time.** A circle is a poor model of a real catchment where
   rivers, motorways and rail lines distort access. Drive-time isochrones would
   need a routing engine (self-hosted OSRM or Valhalla).
+
+## Roads
+
+At national zoom the place labels are enough. Zoom in and the map goes abstract
+fast — 43,064 anonymous polygons with nothing to anchor them unless you already
+know the area.
+
+Rivers help, by accident: the ONS boundaries are clipped around water, so the
+Thames and the Clyde show through as gaps in the polygon coverage. There is no
+water layer. Roads had to be added properly.
+
+This is deliberately **not** a street map. Only classified roads are kept —
+motorways, A roads and B roads — which gives every bypass, the radial routes out
+of each city, and the named high streets that carry a classification, without
+burying the data under a road atlas. They appear by class as you zoom: the
+strategic network from zoom 8.5, B roads only from zoom 11, labels from 11.5.
+A toolbar button turns them off for a clean choropleth.
+
+**Source: OS Open Roads**, Ordnance Survey's open road network for GB, under the
+Open Government Licence. It carries both `roadNumber` (A720) and `name1`
+(Princes Street), so labels prefer whichever is more recognisable.
+
+464,023 classified links dissolve to 35,907 roads — OS splits them at **every
+junction**, and merging by name and number stops MapLibre trying to label the
+same street forty times along its length. Simplification is per class, because
+they appear at different zooms: 25 m for motorways, 35 m for A roads, 60 m for
+B roads which are never drawn below zoom 11 where that is under two pixels.
+The result is 34.9 MB raw, **4.6 MB gzipped**, and about a second to load.
+
+Styling is furniture, not data — a thin ink line over a surface-coloured casing,
+which stays legible over dark blue and pale red alike without competing with the
+fill underneath.
+
+### Labels switch from number to name
+
+At regional zoom the label is the road number; from zoom 13.5 it becomes the
+street name where there is one. That is road atlas behaviour, and it matches
+what the reader is actually asking: "which road is this" when looking at a
+region, "which street am I on" once inside a city. Edinburgh at zoom 12 shows
+A720, A90, A8, A7; at zoom 14.6 the same roads read North Bridge, Leith Walk,
+Lothian Road.
+
+### What is missing, and why
+
+**Princes Street is not on the map.** OS classifies it as *Unclassified /
+Minor Road* — it was declassified when it became bus and tram only — so it falls
+outside the motorway/A/B filter. It is not an isolated case: pedestrianised and
+declassified high streets generally drop out.
+
+Including them would mean taking OS's unclassified roads, and Edinburgh's grid
+square alone holds 37,559 of those against 6,286 A roads. That is the road atlas
+this layer exists to avoid. The filter is one line (`KEEP_CLASSES` in
+`build_roads.py`) if the trade ever looks worth making.
+
+The layer also carries no water. Rivers appear only because the ONS boundaries
+are clipped around them, which works well for the Thames and the Clyde and not
+at all for anything smaller.
 
 ## Place labels
 
