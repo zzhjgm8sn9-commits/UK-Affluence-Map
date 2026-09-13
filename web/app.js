@@ -357,7 +357,12 @@ function applyColours() {
 }
 
 function addLayers(geojson) {
-  map.addSource('areas', { type: 'geojson', data: geojson, promoteId: 'area_code' });
+  map.addSource('areas', {
+    type: 'geojson',
+    data: geojson,
+    promoteId: 'area_code',
+    attribution: 'Contains OS data &copy; Crown copyright and database right 2026. Contains public sector information licensed under the Open Government Licence v3.0.',
+  });
 
   map.addLayer({
     id: 'areas-fill',
@@ -689,6 +694,43 @@ function renderRankings() {
   };
 }
 
+/* The income figures are modelled, and a map that gets forwarded onward will
+ * outrun any caveat kept in a README. Show it once, let people turn it off, and
+ * keep it reachable from the toolbar afterwards. */
+const INTRO_SEEN_KEY = 'uk-affluence-map:intro-dismissed';
+
+function initIntro() {
+  const intro = $('#intro');
+  if (!intro) return;
+
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem(INTRO_SEEN_KEY) === '1';
+  } catch (err) {
+    // Private windows and blocked site data throw on access; showing the
+    // intro is the safe failure here, not hiding it.
+    dismissed = false;
+  }
+  intro.hidden = dismissed;
+
+  const close = () => {
+    const hide = $('#intro-hide');
+    if (hide && hide.checked) {
+      try { localStorage.setItem(INTRO_SEEN_KEY, '1'); } catch (err) { /* ignore */ }
+    }
+    intro.hidden = true;
+  };
+
+  $('#intro-go').onclick = close;
+  intro.onclick = (e) => { if (e.target === intro) close(); };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !intro.hidden) close();
+  });
+
+  const about = $('#toggle-about');
+  if (about) about.onclick = () => { intro.hidden = false; };
+}
+
 function attachToolbar() {
   $('#toggle-theme').onclick = () => {
     document.documentElement.setAttribute('data-theme', isDarkMode() ? 'light' : 'dark');
@@ -781,6 +823,7 @@ async function main() {
     $('#weights-panel').hidden = state.metric !== 'affluence_index';
     attachInteractions();
     attachToolbar();
+    initIntro();
 
     // 'load' fires when the style is ready, but a 21 MB GeoJSON source is still
     // being parsed in a worker at that point, and feature state set against an

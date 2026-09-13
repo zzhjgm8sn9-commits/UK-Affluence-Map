@@ -710,6 +710,53 @@ The sidebar lists the top and bottom ten areas on whichever metric is displayed,
 and clicking any row zooms the map to it. Bounding boxes are indexed once at
 load, so it can zoom to an area that is not currently rendered.
 
+## Sharing it
+
+The site is static — HTML, CSS, three JavaScript files and a folder of generated
+JSON. No server-side anything, so it deploys to any static host.
+
+```bash
+python build_dist.py
+```
+
+That assembles `dist/`: 138 files, 117 MB on disk, of which a first visit
+downloads about **10.4 MB gzipped**. The postcode chunks are the bulk of the
+rest and load only when somebody searches a postcode.
+
+It also stamps the local script and stylesheet URLs with a content hash, which
+is the one thing a static host cannot do for itself. Without it a returning
+visitor can sit on a cached `app.js` indefinitely and see none of your changes.
+
+### Deploying
+
+**Netlify Drop** is the shortest path — drag `dist/` onto
+<https://app.netlify.com/drop> and it returns a public URL. No account needed to
+start, no CLI, and it serves gzip and brotli automatically.
+
+**GitHub Pages** works too, from a `gh-pages` branch containing the contents of
+`dist/`. Keep the generated data off `main` — it is reproducible from the
+pipeline and would otherwise add 117 MB to the history on every rebuild.
+
+> **Cloudflare Pages will not work** without changes: it caps individual files
+> at 25 MB and `gb_roads.geojson` is 34.9 MB.
+
+Relative paths are used throughout, so serving from a subdirectory
+(`username.github.io/uk-affluence-map/`) works without configuration.
+
+### Before you share it
+
+- **Licences.** See [ATTRIBUTION.md](ATTRIBUTION.md). Most of the data is Open
+  Government Licence and needs only attribution, which the map displays. Bank
+  branches and place labels are OpenStreetMap under **ODbL**, which adds
+  share-alike: publishing the map distributes those two derived files, so they
+  are offered under ODbL. Nothing else in the project is affected.
+- **The intro panel.** Shown once per visitor, dismissable, reopenable from the
+  About button. It exists because the income figures are modelled and a map that
+  gets forwarded onward will outrun any caveat kept in a README.
+- **Code licence.** There isn't one. A public repository with no LICENSE file
+  means all rights reserved, which may or may not be what you want — worth a
+  decision before publishing.
+
 ## Roadmap
 
 - **Phase 1** — GB affluence index from comparable inputs, with adjustable

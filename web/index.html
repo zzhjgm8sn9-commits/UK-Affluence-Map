@@ -59,10 +59,61 @@
   <div class="map-wrap">
     <div id="map"></div>
     <div class="toolbar">
+      <button id="toggle-about" type="button">About</button>
       <button id="toggle-roads" type="button">Roads</button>
       <button id="toggle-base" type="button">Basemap</button>
       <button id="toggle-theme" type="button">Theme</button>
     </div>
+<div id="intro" hidden>
+  <div class="intro-card" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <h2 id="intro-title">UK Affluence Map</h2>
+    <p class="intro-lead">
+      Relative affluence and modelled income across <strong>43,064 small areas</strong>
+      in Great Britain, built entirely from open government data.
+    </p>
+
+    <h3>Before you use the numbers</h3>
+    <ul class="intro-points">
+      <li>
+        <strong>The income figures are modelled, not measured.</strong> No open
+        source publishes individual income below parliamentary constituency, so
+        the small-area figures are estimated from HMRC tax data and an affluence
+        index. They are sound enough to rank neighbourhoods and size a catchment;
+        they are not sound enough to quote as fact about any single area.
+      </li>
+      <li>
+        <strong>The affluence index is relative.</strong> It is a percentile rank
+        against the rest of GB, not a score with units. Grey on the map means
+        &ldquo;typical for Britain&rdquo;; red is below the national median and
+        blue above.
+      </li>
+      <li>
+        <strong>Bank branches come from OpenStreetMap.</strong> Contributed data,
+        not an authoritative register &mdash; good in towns, patchier in rural
+        areas, and slow to reflect closures.
+      </li>
+      <li>
+        <strong>Catchments are straight-line radii</strong>, not drive times. A
+        circle is a poor model of access where rivers and motorways get in the way.
+      </li>
+    </ul>
+
+    <p class="intro-sources">
+      Sources: ONS, HMRC, Ordnance Survey, HM Land Registry, Registers of
+      Scotland, National Records of Scotland, DfT (NaPTAN) &mdash; all under the
+      Open Government Licence v3.0. Bank branches and place labels
+      &copy; OpenStreetMap contributors, ODbL.
+    </p>
+
+    <div class="intro-actions">
+      <button type="button" id="intro-go">Explore the map</button>
+      <label class="intro-dismiss">
+        <input type="checkbox" id="intro-hide"> Don&rsquo;t show this again
+      </label>
+    </div>
+  </div>
+</div>
+
     <div id="tooltip"></div>
     <div id="status">Loading boundaries&hellip;</div>
   </div>

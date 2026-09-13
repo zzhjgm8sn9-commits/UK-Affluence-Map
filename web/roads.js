@@ -65,7 +65,7 @@ async function initRoads() {
     return;
   }
 
-  map.addSource('roads', { type: 'geojson', data });
+  map.addSource('roads', { type: 'geojson', data, attribution: 'Contains OS data &copy; Crown copyright and database right 2026. Contains public sector information licensed under the Open Government Licence v3.0.' });
   const { ink, casing } = roadColours();
 
   const isMajor = ['match', ['get', 'road_class'],

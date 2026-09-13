@@ -12,3 +12,6 @@ web/data/*.geojson
 web/data/*.json
 web/data/postcodes/
 web/fonts/
+
+# Built site, assembled by build_dist.py.
+dist/

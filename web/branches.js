@@ -247,7 +247,10 @@ function emptyCollection() {
 function addBranchLayers() {
   registerPinImages();
 
-  map.addSource('branches', { type: 'geojson', data: emptyCollection() });
+  map.addSource('branches', {
+    type: 'geojson', data: emptyCollection(),
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL)',
+  });
   map.addSource('catchment', { type: 'geojson', data: emptyCollection() });
 
   map.addLayer({
@@ -713,6 +716,7 @@ async function initPlaces() {
   }
 
   map.addSource('places', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL)',
     type: 'geojson',
     data: {
       type: 'FeatureCollection',
