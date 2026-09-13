@@ -117,6 +117,10 @@ Run in order. Each step caches, so re-runs are cheap.
 ./.venv/Scripts/python.exe pipeline/build_search.py
 ```
 
+```bash
+./.venv/Scripts/python.exe pipeline/build_connections.py
+```
+
 Downloads are cached in `data/raw/` and never re-fetched, so re-runs are cheap
 and work offline.
 
@@ -126,10 +130,17 @@ The map must be served over HTTP — opening `index.html` from disk fails becaus
 the browser blocks `fetch` on `file://` URLs.
 
 ```bash
-./.venv/Scripts/python.exe -m http.server 8000 --directory web
+./.venv/Scripts/python.exe serve.py
 ```
 
 Then open <http://localhost:8000>.
+
+`serve.py` rather than `python -m http.server` for two reasons. It disables
+caching and stamps local script and stylesheet URLs with their file mtime —
+without that, an edited `app.js` or a rebuilt data file keeps serving the stale
+copy and the map appears not to have changed, which is a genuinely confusing
+failure when the files on disk are plainly correct. It also gzips, which takes
+the boundary file from 21 MB to 3.4 MB over the wire.
 
 ---
 
@@ -150,6 +161,7 @@ pipeline/
   build_branches.py     OSM bank branches -> web/data
   build_places.py       OSM city labels + vendored glyphs -> web/data
   build_search.py       postcode chunks + place index -> web/data
+  build_connections.py  NaPTAN travel-connections rating -> web/data
 data/
   raw/                  downloaded sources, cached
   interim/              harmonised intermediates (parquet)
@@ -378,8 +390,8 @@ than cost, CACI Paycheck is the honest answer.
 ## Bank branches and catchment
 
 4,698 GB branches across 25 filterable brands, from OpenStreetMap. Select any
-combination of brands, set a catchment radius (0.5–15 km), and the map reports
-the population reached and its modelled income distribution.
+combination of brands, set a catchment radius (0.5–40 km, default 10), and the
+map reports the population reached and its modelled income distribution.
 
 Branches are drawn as **pins in their brand's colours**, which are bigger and
 easier to hit than dots and read at a glance in a cluster. **Click a pin** to
@@ -573,6 +585,61 @@ boundary. Strip it and "EH3 6" normalises to "EH36", which prefix-matches
 district EH36 and buries the EH3 6xx the user asked for. When a space is
 present the outward code must match exactly and only the inward part is treated
 as a prefix; without one it falls back to plain prefix matching.
+
+## Travel connections rating
+
+Every branch carries a rating out of 10 for how reachable it is without a car.
+
+Real drive-time isochrones need a routing engine and a road network, and they
+answer a different question anyway — how far a car can get, which for a high
+street bank is often the least interesting mode. This is a deliberately simpler
+proxy built from four components:
+
+| Component | Weight | What it measures |
+|---|---|---|
+| Rail, metro or tram proximity | 3 | distance to the nearest station |
+| People within a walk | 3 | adults within 800 m |
+| Mode diversity | 2 | distinct modes within 800 m |
+| Bus stop density | 2 | bus stops within 500 m |
+
+Mode diversity is scored to reward the **second** mode most — somewhere with a
+bus and a train is far better connected than somewhere with two bus routes, and
+the weighting has to capture that.
+
+**Source: NaPTAN**, the Department for Transport's register of every public
+transport access point in GB — 355,701 active nodes (344k bus, 6.2k rail, 3.9k
+tram, 1.1k ferry). It is **Open Government Licence**, unlike the OpenStreetMap
+layers, and its StopType field distinguishes modes directly rather than
+requiring them to be inferred from tags.
+
+### It reads sensibly
+
+Camden High Street scores 10.0 — station 12 m away, four modes, 31 bus stops,
+19,680 adults within a walk. Pierowall on Westray scores 0.1, with no transport
+node within 6 km and ten adults within 800 m. By brand, **Metro Bank averages
+8.5** (deliberately urban, high-footfall siting) against **Cumberland Building
+Society at 3.3** (rural Cumbria). Median across all branches is 7.9, which is
+what you would expect of an estate built around high streets.
+
+### One thing that had to be fixed
+
+The first implementation summed the adults of every area whose **centroid** fell
+within 800 m. That is badly wrong at this scale: small areas can be two
+kilometres across, so a branch in the middle of a town centre often has no
+centroid within 800 m at all. It scored 104 branches at zero walkable
+population, including a High Street site with eleven bus stops at the door.
+
+Each branch now gets a buffer and every area it touches contributes its adults
+in proportion to how much of it falls inside, which assumes population is spread
+evenly within an area — the standard assumption, and far closer to the truth
+than sampling a single point.
+
+### What it is not
+
+Not a drive time, and not trying to be one. It says nothing about parking, road
+access or service frequency — NaPTAN records where you can board, not how often
+anything runs. Adding timetable data (via BODS, also OGL) would let frequency
+in, and is the obvious next step if this proves useful.
 
 ## Rankings
 

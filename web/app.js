@@ -95,7 +95,7 @@ function formatValue(key, v) {
 
 async function loadData() {
   setStatus('Loading boundaries…');
-  const geojson = await fetch('data/gb_areas.geojson').then((r) => {
+  const geojson = await fetch('data/gb_areas.geojson', {cache: 'no-store'}).then((r) => {
     if (!r.ok) throw new Error('boundaries: HTTP ' + r.status);
     return r.json();
   });
@@ -103,7 +103,7 @@ async function loadData() {
 
   let metrics = null;
   try {
-    const resp = await fetch('data/gb_metrics.json');
+    const resp = await fetch('data/gb_metrics.json', {cache: 'no-store'});
     if (resp.ok) metrics = await resp.json();
   } catch (err) {
     console.warn('no metrics file yet', err);
@@ -134,7 +134,7 @@ async function loadData() {
   // different cadence from the index, and are joined by area code rather than
   // by position so neither file has to trust the other's row order.
   try {
-    const resp = await fetch('data/gb_income.json');
+    const resp = await fetch('data/gb_income.json', {cache: 'no-store'});
     if (resp.ok) {
       const income = await resp.json();
       const n = state.codes.length;

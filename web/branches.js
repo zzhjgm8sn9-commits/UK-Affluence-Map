@@ -66,7 +66,7 @@ const branchState = {
   brands: [],         // [{brand_group, n}]
   selected: new Set(),
   focused: null,      // a single branch, when one has been clicked
-  radiusKm: 2,
+  radiusKm: 10,
   active: false,
   grid: null,         // cell key -> array of area indices
   ax: null,           // area centroid x, km
@@ -304,6 +304,7 @@ function refreshBranchLayers() {
       properties: {
         id: b.x + ',' + b.y + ',' + b.n,
         brand: b.b, name: b.n, area_code: b.a, pin: pinId(b.b),
+        connections: b.c == null ? null : b.c,
       },
       geometry: { type: 'Point', coordinates: [b.x, b.y] },
     })),
@@ -353,7 +354,7 @@ function applyCatchmentDimming(branches) {
 async function initBranches() {
   let payload;
   try {
-    const resp = await fetch('data/gb_branches.json');
+    const resp = await fetch('data/gb_branches.json', {cache: 'no-store'});
     if (!resp.ok) return;
     payload = await resp.json();
   } catch (err) {
@@ -398,7 +399,7 @@ function renderBranchPanel() {
     '<div class="weight" style="margin-top:12px">' +
       '<div class="weight-head"><span class="label">Catchment radius</span>' +
       '<span class="value" id="radius-value">' + branchState.radiusKm.toFixed(1) + ' km</span></div>' +
-      '<input type="range" id="radius" min="0.5" max="15" step="0.5" value="' +
+      '<input type="range" id="radius" min="0.5" max="40" step="0.5" value="' +
         branchState.radiusKm + '">' +
     '</div>' +
     '<label class="catchment-toggle"><input type="checkbox" id="catchment-on"' +
@@ -505,6 +506,7 @@ function renderCatchmentStats(branches) {
     focused
       ? ['Radius', branchState.radiusKm.toFixed(1) + ' km']
       : ['Branches', branches.length.toLocaleString('en-GB')],
+    ...connectionRows(focused, branches),
     ['Small areas covered', t.areas.toLocaleString('en-GB')],
     ['Adults reached', fmt.count(t.adults) +
       (coverage && national.adults
@@ -553,6 +555,32 @@ function renderCatchmentStats(branches) {
       renderCatchmentStats(branches);
     };
   }
+}
+
+/** Travel-connections rows: the branch's own rating, or the network's average.
+ *
+ *  A proxy for how reachable a branch is without a car -- nearest station,
+ *  how many modes are within a walk, bus density, and how many people live
+ *  close enough to walk in. Not a drive time, and not trying to be one. */
+function connectionRows(focused, branches) {
+  if (focused) {
+    if (focused.c == null) return [];
+    const d = focused.cd || [];
+    const rail = d[0] == null ? 'none within 6 km'
+      : d[0] < 1000 ? d[0] + ' m' : (d[0] / 1000).toFixed(1) + ' km';
+    return [
+      ['Connections', '<strong>' + focused.c.toFixed(1) + '</strong> / 10'],
+      ['&nbsp;&nbsp;Nearest station', rail],
+      ['&nbsp;&nbsp;Transport modes', String(d[1] ?? '--')],
+      ['&nbsp;&nbsp;Bus stops within 500 m', String(d[2] ?? '--')],
+      ['&nbsp;&nbsp;Adults within 800 m', fmt.count(d[3])],
+    ];
+  }
+
+  const rated = branches.filter((b) => b.c != null);
+  if (!rated.length) return [];
+  const mean = rated.reduce((s, b) => s + b.c, 0) / rated.length;
+  return [['Mean connections', mean.toFixed(1) + ' / 10']];
 }
 
 /** GB totals per income band, for the coverage denominator. Computed once. */
@@ -604,8 +632,11 @@ function attachBranchInteractions() {
     const f = e.features && e.features[0];
     if (!f) return;
     const el = document.querySelector('#tooltip');
+    const c = f.properties.connections;
     el.innerHTML = '<div class="t-name">' + f.properties.name + '</div>' +
-      '<div class="t-meta">' + f.properties.brand + '</div>';
+      '<div class="t-meta">' + f.properties.brand + '</div>' +
+      (c == null ? '' :
+        '<div class="t-val">Connections: <strong>' + c.toFixed(1) + '</strong>/10</div>');
     el.style.display = 'block';
     el.style.left = (e.point.x + 14) + 'px';
     el.style.top = (e.point.y + 14) + 'px';
@@ -673,7 +704,7 @@ function applyPlaceLabelColours() {
 async function initPlaces() {
   let payload;
   try {
-    const resp = await fetch('data/gb_places.json');
+    const resp = await fetch('data/gb_places.json', {cache: 'no-store'});
     if (!resp.ok) return;
     payload = await resp.json();
   } catch (err) {

@@ -267,7 +267,7 @@ async function runSearch(raw) {
 
 async function initSearch() {
   try {
-    const resp = await fetch('data/gb_search.json');
+    const resp = await fetch('data/gb_search.json', {cache: 'no-store'});
     if (resp.ok) searchState.places = (await resp.json()).places || [];
   } catch (err) {
     console.warn('no search index', err);
