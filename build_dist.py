@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import os
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -37,6 +39,14 @@ REQUIRED = [
     "data/gb_branches.json", "data/gb_places.json", "data/gb_search.json",
     "data/gb_roads.json",
 ]
+
+
+def _drop_readonly(func, path, exc):
+    """Git marks its object files read-only, and Windows refuses to delete
+    those. deploy_gh_pages.py leaves a .git directory inside dist/, so a plain
+    rmtree fails on every rebuild after the first deploy."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
 
 
 def check_inputs() -> bool:
@@ -76,7 +86,7 @@ def main() -> None:
         sys.exit(1)
 
     if DIST.exists():
-        shutil.rmtree(DIST)
+        shutil.rmtree(DIST, onexc=_drop_readonly)
     shutil.copytree(WEB, DIST)
 
     # GitHub Pages runs Jekyll by default, which skips files and folders
