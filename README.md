@@ -764,6 +764,18 @@ uncompressed.
 Relative paths are used throughout, so serving from a subdirectory
 (`username.github.io/uk-affluence-map/`) works without configuration.
 
+### Narrow screens
+
+Below 900 px the sidebar becomes a drawer over the map rather than a column
+beside it, toggled from the toolbar and dismissed by tapping the map. A fixed
+330 px panel leaves a phone with almost no map at all — which matters now the
+thing is a link people forward.
+
+The drawer toggle is wired before any data loads. It is pure DOM and needs
+neither the map nor the metrics, and on a phone the panel is the only route to
+the controls: a button that does nothing for the first few seconds reads as
+broken.
+
 ### Before you share it
 
 - **Licences.** See [ATTRIBUTION.md](ATTRIBUTION.md). Most of the data is Open

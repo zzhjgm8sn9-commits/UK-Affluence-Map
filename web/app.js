@@ -694,6 +694,25 @@ function renderRankings() {
   };
 }
 
+/* On narrow screens the sidebar is a drawer over the map rather than a column
+ * beside it. Wired before any data loads: it is pure DOM, and on a phone the
+ * panel is the only route to the controls -- a button that does nothing for the
+ * first few seconds reads as broken. */
+function setSidebarOpen(open) {
+  const sidebar = $('#sidebar');
+  const btn = $('#toggle-sidebar');
+  if (!sidebar) return;
+  sidebar.classList.toggle('open', open);
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+}
+
+function initSidebarToggle() {
+  const btn = $('#toggle-sidebar');
+  const sidebar = $('#sidebar');
+  if (!btn || !sidebar) return;
+  btn.onclick = () => setSidebarOpen(!sidebar.classList.contains('open'));
+}
+
 /* The income figures are modelled, and a map that gets forwarded onward will
  * outrun any caveat kept in a README. Show it once, let people turn it off, and
  * keep it reachable from the toolbar afterwards. */
@@ -741,6 +760,10 @@ function attachToolbar() {
     if (typeof applyRoadColours === 'function') applyRoadColours();
   };
 
+  // Tapping the map is the natural "done with the panel" gesture. This half
+  // needs the map; the button itself does not, and is wired far earlier.
+  map.on('click', () => setSidebarOpen(false));
+
   const roadsBtn = $('#toggle-roads');
   if (roadsBtn) {
     roadsBtn.onclick = () => {
@@ -778,6 +801,7 @@ async function main() {
   // it is read while the map loads rather than interrupting someone who is
   // already looking at the result.
   initIntro();
+  initSidebarToggle();
 
   let geojson;
   try {

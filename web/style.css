@@ -357,3 +357,39 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
   font-size: 12px; color: var(--text-muted); cursor: pointer;
 }
 .intro-dismiss input { margin: 0; accent-color: var(--accent); }
+
+/* ---------- narrow screens ---------- */
+/* A fixed 330px sidebar leaves a phone with almost no map. Below this width it
+   becomes a drawer over the map instead of a column beside it, and the map
+   gets the full viewport. */
+#toggle-sidebar { display: none; }
+
+@media (max-width: 900px) {
+  #app { position: relative; }
+
+  #sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    z-index: 30;
+    width: min(330px, 86vw);
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .18);
+  }
+  #sidebar.open { transform: translateX(0); }
+
+  .map-wrap { width: 100%; }
+
+  #toggle-sidebar { display: block; }
+  /* Five labelled buttons will not fit a phone on one row. The drawer toggle
+     drops to its icon and the rest tighten up, which keeps them on one line
+     rather than wrapping "Theme" awkwardly onto a second. */
+  #toggle-sidebar .label-full { display: none; }
+  .toolbar { gap: 4px; }
+  .toolbar button { padding: 6px 7px; font-size: 11px; }
+
+  /* The zoom controls sit top-left, where the drawer slides out from. */
+  .maplibregl-ctrl-top-left { top: 46px; }
+
+  .intro-card { padding: 20px 20px 18px; }
+  .intro-actions { flex-wrap: wrap; gap: 10px; }
+}
