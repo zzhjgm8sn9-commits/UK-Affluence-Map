@@ -774,6 +774,11 @@ function attachToolbar() {
 /* ------------------------------ boot ------------------------------ */
 
 async function main() {
+  // Before any fetch: the intro needs no data, and showing it immediately means
+  // it is read while the map loads rather than interrupting someone who is
+  // already looking at the result.
+  initIntro();
+
   let geojson;
   try {
     geojson = await loadData();
@@ -823,7 +828,6 @@ async function main() {
     $('#weights-panel').hidden = state.metric !== 'affluence_index';
     attachInteractions();
     attachToolbar();
-    initIntro();
 
     // 'load' fires when the style is ready, but a 21 MB GeoJSON source is still
     // being parsed in a worker at that point, and feature state set against an

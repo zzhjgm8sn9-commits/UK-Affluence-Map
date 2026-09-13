@@ -315,6 +315,11 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
   background: rgba(11, 11, 11, .42);
   padding: 24px;
 }
+/* The browser hides [hidden] elements with `display: none` from its own
+   stylesheet, which an id selector setting `display: flex` beats on
+   specificity. Without this rule `intro.hidden = true` sets the property and
+   changes nothing on screen -- the panel cannot be dismissed. */
+#intro[hidden] { display: none !important; }
 .intro-card {
   background: var(--surface-1);
   border: 1px solid var(--border); border-radius: 10px;
