@@ -113,6 +113,10 @@ Run in order. Each step caches, so re-runs are cheap.
 ./.venv/Scripts/python.exe pipeline/build_places.py
 ```
 
+```bash
+./.venv/Scripts/python.exe pipeline/build_search.py
+```
+
 Downloads are cached in `data/raw/` and never re-fetched, so re-runs are cheap
 and work offline.
 
@@ -145,6 +149,7 @@ pipeline/
   validate_income.py    out-of-sample check against ONS estimates
   build_branches.py     OSM bank branches -> web/data
   build_places.py       OSM city labels + vendored glyphs -> web/data
+  build_search.py       postcode chunks + place index -> web/data
 data/
   raw/                  downloaded sources, cached
   interim/              harmonised intermediates (parquet)
@@ -153,6 +158,7 @@ web/
   index.html            map shell
   app.js                map logic
   branches.js           branch layer, catchment analysis, place labels
+  search.js             postcode / place / branch search
   style.css             styling
   fonts/                generated: vendored Noto Sans glyph ranges
   data/                 generated: topology + metrics
@@ -530,6 +536,43 @@ vendors two Latin ranges of Noto Sans (Regular and Bold, ~420 KB) into
 own is explicitly a demo, the openmaptiles one no longer serves these, and a
 runtime font dependency would be the only thing in the app that needs the
 network at view time.
+
+## Search
+
+One box, three kinds of result: postcodes, towns and cities, and individual
+branches. Arrow keys move, Enter selects, Escape clears.
+
+**Postcode** flies to the exact coordinates, drops a pin and selects the small
+area containing it — so the statistics shown are the ones that actually exist at
+that resolution, which is the honest interaction given nothing here is modelled
+at postcode-unit level.
+
+**Town or city** pans to it. All 1,614 OSM cities and towns are searchable, not
+just the 151 prominent enough to carry a label.
+
+**Branch** focuses that branch: it ticks the brand, turns the catchment on and
+reports that single branch's reach.
+
+### Postcodes are fetched on demand
+
+There are 1.75 million live GB postcodes — far too much to ship with a page for
+a search box most sessions never use. They are split into one file per postcode
+area (AB, AL, B, … 120 of them) and the file for "SW" is requested only when
+somebody types a postcode starting with those letters. Median chunk is 394 KB,
+the largest (B) is 1.2 MB, and chunks are cached for the session.
+
+### Two things that had to be got right
+
+**Keys are stored space-free.** The box normalises what the user types, so a
+stored "1A 1AA" would never match a normalised "SW1A1AA" — every *full* postcode
+would silently find nothing while partials worked, which is the worst kind of
+bug to notice late.
+
+**But a typed space is still information.** It marks the outward/inward
+boundary. Strip it and "EH3 6" normalises to "EH36", which prefix-matches
+district EH36 and buries the EH3 6xx the user asked for. When a space is
+present the outward code must match exactly and only the inward part is treated
+as a prefix; without one it falls back to plain prefix matching.
 
 ## Rankings
 

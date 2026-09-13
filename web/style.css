@@ -270,3 +270,37 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
   background: var(--accent); color: #fff; font-weight: 600;
 }
 .stats-mode button.on:hover { background: var(--accent); }
+
+/* ---------- search ---------- */
+#search-panel { position: relative; }
+#search { width: 100%; }
+#search::-webkit-search-cancel-button { cursor: pointer; }
+
+#search-results {
+  margin-top: 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-1); overflow: hidden;
+  max-height: 280px; overflow-y: auto;
+}
+.search-row {
+  display: grid; grid-template-columns: 34px 1fr auto;
+  align-items: baseline; gap: 8px;
+  width: 100%; text-align: left;
+  border: none; border-radius: 0; background: none;
+  padding: 6px 9px; font-size: 12px; cursor: pointer;
+}
+.search-row + .search-row { border-top: 1px solid var(--border); }
+.search-row:hover, .search-row.active { background: var(--surface-3); }
+.search-kind {
+  font-size: 9px; font-weight: 650; letter-spacing: .04em;
+  text-transform: uppercase; color: #fff;
+  padding: 2px 0; border-radius: 3px; text-align: center;
+}
+.k-postcode { background: #c74941; }
+.k-place    { background: #1c5cab; }
+.k-branch   { background: #52514e; }
+.search-label {
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.search-detail { color: var(--text-muted); font-size: 11px; white-space: nowrap; }

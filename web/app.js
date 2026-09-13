@@ -786,6 +786,7 @@ async function main() {
         ? initPlaces() : Promise.resolve();
       places.then(() => {
         if (typeof initBranches === 'function') initBranches();
+        if (typeof initSearch === 'function') initSearch();
       });
     });
   });

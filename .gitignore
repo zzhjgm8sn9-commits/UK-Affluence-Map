@@ -10,4 +10,5 @@ data/out/
 # Generated web payloads.
 web/data/*.geojson
 web/data/*.json
+web/data/postcodes/
 web/fonts/

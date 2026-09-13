@@ -15,6 +15,13 @@
       <p>43,064 small areas &middot; Great Britain</p>
     </div>
 
+    <div class="panel" id="search-panel">
+      <h2>Search</h2>
+      <input type="search" id="search" autocomplete="off" spellcheck="false"
+             placeholder="Postcode, town or branch">
+      <div id="search-results" hidden></div>
+    </div>
+
     <div class="panel">
       <h2>Colour by</h2>
       <select id="metric"></select>
@@ -62,6 +69,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.1/maplibre-gl.js"></script>
 <script src="branches.js"></script>
+<script src="search.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
