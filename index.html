@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UK Affluence Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.1/maplibre-gl.css">
+<link rel="stylesheet" href="style.css?v=3c0b44a5">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <h1>UK Affluence Map</h1>
+      <p>43,064 small areas &middot; Great Britain</p>
+    </div>
+
+    <div class="panel" id="search-panel">
+      <h2>Search</h2>
+      <input type="search" id="search" autocomplete="off" spellcheck="false"
+             placeholder="Postcode, town or branch">
+      <div id="search-results" hidden></div>
+    </div>
+
+    <div class="panel">
+      <h2>Colour by</h2>
+      <select id="metric"></select>
+    </div>
+
+    <div class="panel" id="weights-panel" hidden>
+      <h2>Index weights</h2>
+      <div id="weights"></div>
+      <button id="reset-weights" type="button">Reset to defaults</button>
+    </div>
+
+    <div class="panel">
+      <h2>Legend</h2>
+      <div id="legend"></div>
+    </div>
+
+    <div class="panel" id="selection">
+      <h2>Selected area</h2>
+      <p class="empty">Click an area on the map.</p>
+    </div>
+
+    <div class="panel" id="branches"></div>
+
+    <div class="panel" id="rankings"></div>
+
+    <div class="panel">
+      <h2>Sources</h2>
+      <p class="legend-note">
+        Boundaries: ONS LSOA 2021 (England &amp; Wales) and Scottish Government
+        Data Zones 2022, both Open Government Licence v3.
+      </p>
+    </div>
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="toolbar">
+      <button id="toggle-sidebar" type="button" aria-expanded="false">&#9776;<span class="label-full"> Panel</span></button>
+      <button id="toggle-about" type="button">About</button>
+      <button id="toggle-roads" type="button">Roads</button>
+      <button id="toggle-base" type="button">Basemap</button>
+      <button id="toggle-theme" type="button">Theme</button>
+    </div>
+<div id="intro" hidden>
+  <div class="intro-card" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <h2 id="intro-title">UK Affluence Map</h2>
+    <p class="intro-lead">
+      Relative affluence and modelled income across <strong>43,064 small areas</strong>
+      in Great Britain, built entirely from open government data.
+    </p>
+
+    <h3>Before you use the numbers</h3>
+    <ul class="intro-points">
+      <li>
+        <strong>The income figures are modelled, not measured.</strong> No open
+        source publishes individual income below parliamentary constituency, so
+        the small-area figures are estimated from HMRC tax data and an affluence
+        index. They are sound enough to rank neighbourhoods and size a catchment;
+        they are not sound enough to quote as fact about any single area.
+      </li>
+      <li>
+        <strong>The affluence index is relative.</strong> It is a percentile rank
+        against the rest of GB, not a score with units. Grey on the map means
+        &ldquo;typical for Britain&rdquo;; red is below the national median and
+        blue above.
+      </li>
+      <li>
+        <strong>Bank branches come from OpenStreetMap.</strong> Contributed data,
+        not an authoritative register &mdash; good in towns, patchier in rural
+        areas, and slow to reflect closures.
+      </li>
+      <li>
+        <strong>Catchments are straight-line radii</strong>, not drive times. A
+        circle is a poor model of access where rivers and motorways get in the way.
+      </li>
+    </ul>
+
+    <p class="intro-sources">
+      Sources: ONS, HMRC, Ordnance Survey, HM Land Registry, Registers of
+      Scotland, National Records of Scotland, DfT (NaPTAN) &mdash; all under the
+      Open Government Licence v3.0. Bank branches and place labels
+      &copy; OpenStreetMap contributors, ODbL.
+    </p>
+
+    <div class="intro-actions">
+      <button type="button" id="intro-go">Explore the map</button>
+      <label class="intro-dismiss">
+        <input type="checkbox" id="intro-hide"> Don&rsquo;t show this again
+      </label>
+    </div>
+  </div>
+</div>
+
+    <div id="tooltip"></div>
+    <div id="status">Loading boundaries&hellip;</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.1/maplibre-gl.js"></script>
+<script src="roads.js?v=9e8a5923"></script>
+<script src="branches.js?v=0a410f89"></script>
+<script src="search.js?v=e6afe48c"></script>
+<script src="app.js?v=809d18f4"></script>
+</body>
+</html>
