@@ -241,6 +241,82 @@ on derived databases, which matters if any output leaves the organisation.
 
 ---
 
+## Reading the map
+
+### The colour scale
+
+The map originally classed every metric into eleven **quantile** classes. That
+ranks well and it is what most choropleths do, but it lies about level: equal
+counts put half the country above the midpoint by construction, so "Adults on
+£100k+" rendered as half deep blue when the typical neighbourhood has 1.8% of
+adults over £100k. The colour said "high"; the number said "one in fifty-five".
+
+The default is now a **value scale**. Classes are value ranges rather than equal
+counts, and they diverge about the national figure:
+
+- **The anchor.** For a share, the population-weighted aggregate — weight each
+  area's percentage by the people it describes and you get the true GB rate,
+  2.69% of adults on £100k+ rather than the 1.82% of the middle area. For a
+  level (a price, a modelled median) an average of averages means nothing, so
+  the anchor is the population-weighted median: the value in the middle
+  *person's* area, not the middle area.
+- **Geometric steps.** Every metric here is right-skewed. Linear intervals over
+  a range that runs to £4m or to 21.5% put nine areas in ten in the first class
+  and flatten the picture. A ratio scale says something true and legible: each
+  class is a fixed multiple further from typical than the last.
+- **Clamped ends.** The outer breaks sit at the 0.5th and 99.5th percentiles, so
+  one £4m outlier cannot swallow the ramp.
+
+For "Adults on £100k+" the two scales produce this:
+
+| | Quantiles (old) | Value scale (now) |
+|---|---|---|
+| Areas above the midpoint | 50.0% | 31.8% |
+| Areas in the middle (grey) class | 9.1% | 33.3% |
+| Areas in the darkest blue | 9.1% | 0.5% |
+| What the midpoint means | median area, 1.8% | GB rate, 2.7% |
+
+Both are honest about different things, so both are available: **By value**
+answers "how much?", **By rank** answers "compared with everywhere else?". The
+legend says which you are looking at and what it implies, hovering a swatch
+gives its range and the share of areas in it, and the tooltip prints the
+percentile so the rank is never lost when the value scale is on.
+
+The affluence index is excluded from the choice: it *is* a percentile rank, so
+classing it by value and by rank are the same operation.
+
+### Selecting areas and branches
+
+Both accumulate. Click an area to select it, click another to add it, click a
+selected one to drop it — the same gesture whether one or twenty are selected.
+Branch pins work identically. Clicking the sea clears everything.
+
+With more than one area selected the panel shows the combined figures, and
+combining is not summing: shares and levels are re-weighted by the population
+they describe (adults for the income metrics, residents for the census ones),
+and only genuine counts add. Income bands are summed across the selection. Each
+selected area gets a chip that removes it, because with a dozen in the set the
+map stops being a usable way to find the odd one out.
+
+Selecting several branch pins measures the **union** of their catchments, so a
+person within reach of three of them is counted once.
+
+### Typing into the sliders
+
+Every slider — the four index weights and the catchment radius — has a number
+field beside it, because a drag is quick but imprecise and a typed value is
+precise but slow to explore with. They write to the same value and each redraws
+the other; out-of-range typing is ignored until the field loses focus, then
+clamped.
+
+Dragging used to stutter because each step reclassed all 43,064 areas and pushed
+every one of them into feature state. Two fixes: repaints are coalesced to one
+per animation frame, and only the areas whose class or catchment membership
+actually changed are pushed. A weight nudge repaints in about 50 ms and a radius
+step in about 10 ms.
+
+---
+
 ## The affluence index
 
 A weighted mean of standardised components, ranked to a 0-100 percentile.
@@ -709,6 +785,45 @@ in, and is the obvious next step if this proves useful.
 The sidebar lists the top and bottom ten areas on whichever metric is displayed,
 and clicking any row zooms the map to it. Bounding boxes are indexed once at
 load, so it can zoom to an area that is not currently rendered.
+
+### Network coverage
+
+Underneath the rankings, the same dropdown drives a comparison of every brand's
+whole network — measured whether or not it is ticked on the map, because the
+answer is a comparison. Two numbers, and they say different things:
+
+- **Coverage** — the share of the metric's target population inside that
+  network's catchment at the current radius. Big networks win, which is the
+  honest answer to "who reaches most of them".
+- **Focus** — that share divided by the network's share of *all* adults. Above
+  1.0× means the branches sit where the metric is concentrated rather than
+  merely wherever there are people.
+
+The target population is the headcount behind the metric where one exists — the
+adults over £100k, the degree-qualified residents — recovered by multiplying
+each area's share by the people it describes. Levels have no headcount of their
+own, so for a price or a modelled median the target is the adults living in the
+highest-scoring fifth of the country.
+
+At a 10 km radius on "Adults on £100k+":
+
+| Brand | Branches | Coverage | All adults | Focus |
+|---|---|---|---|---|
+| Nationwide | 554 | 90.4% | 87.7% | 1.03× |
+| Lloyds Bank | 544 | 84.9% | 81.1% | 1.05× |
+| Barclays | 421 | 82.1% | 77.5% | 1.06× |
+| Metro Bank | 77 | 54.1% | 38.2% | **1.42×** |
+| Newcastle Building Society | 26 | 1.6% | 3.9% | 0.42× |
+
+Metro Bank tops the focus ranking on a tenth of Nationwide's estate, which is
+the London and South East concentration showing up as a number. The regional
+building societies sit below 1.0× for the same reason in reverse.
+
+Coverage saturates: at 40 km the leading half-dozen networks are all above
+98% and the ranking stops discriminating. The interesting radii are small ones.
+
+Networks overlap heavily, so the shares do not add to 100%. The "Other" and
+"Unknown" brand groups are left out — they are not networks anyone runs.
 
 ## Sharing it
 

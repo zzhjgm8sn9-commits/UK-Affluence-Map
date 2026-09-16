@@ -55,9 +55,21 @@ const state = {
   metric: 'nation',
   breaks: [],
   median: null,
+  anchor: null,        // the value the diverging ramp is centred on
+  scaleMode: 'value',  // 'value' = class by amount, 'rank' = class by quantile
+  scaleUsed: 'rank',   // which of the two actually produced state.breaks
   basemap: false,
-  selected: null,
+  selection: [],       // area codes, in click order
 };
+
+/* Metrics that are already a percentile rank, where classing by value and
+ * classing by rank are the same operation. The scale control is hidden for
+ * these rather than offered as a choice that does nothing. */
+const RANKED_METRICS = new Set(['affluence_index']);
+
+function scaleMode() {
+  return RANKED_METRICS.has(state.metric) ? 'rank' : state.scaleMode;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const statusEl = $('#status');
@@ -85,10 +97,33 @@ const fmt = {
   raw: (v) => v == null ? '--' : String(v),
 };
 
+function metricMeta(key) {
+  return state.metrics.find((m) => m.key === key) ||
+         state.components.find((c) => c.key === key) || null;
+}
+
 function formatValue(key, v) {
-  const meta = state.metrics.find((m) => m.key === key) ||
-               state.components.find((c) => c.key === key);
+  const meta = metricMeta(key);
   return (fmt[meta && meta.format] || fmt.raw)(v);
+}
+
+/** Short form for legend ticks and table cells, where the full
+ *  "£1,275,000" would wrap and push the columns apart. */
+function compactValue(key, v) {
+  if (!Number.isFinite(v)) return '--';
+  const meta = metricMeta(key);
+  switch (meta && meta.format) {
+    case 'gbp':
+      if (Math.abs(v) >= 1e6) return '£' + (v / 1e6).toFixed(Math.abs(v) >= 1e7 ? 0 : 1) + 'm';
+      if (Math.abs(v) >= 1000) return '£' + Math.round(v / 1000) + 'k';
+      return '£' + Math.round(v);
+    case 'pct':
+      return (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1)) + '%';
+    case 'count':
+      return Math.round(v).toLocaleString('en-GB');
+    default:
+      return v.toFixed(1);
+  }
 }
 
 /* ------------------------------ data ------------------------------ */
@@ -149,8 +184,8 @@ async function loadData() {
       }
       state.bandLabels = income.band_labels;
       state.metrics.unshift(
-        { key: 'pct_100k_plus', label: 'Adults on £100k+', format: 'pct' },
-        { key: 'median_income', label: 'Median income (modelled)', format: 'gbp' },
+        { key: 'pct_100k_plus', label: 'Adults on £100k+', format: 'pct', income: true },
+        { key: 'median_income', label: 'Median income (modelled)', format: 'gbp', income: true },
       );
     }
   } catch (err) {
@@ -182,6 +217,128 @@ function quantileBreaks(values, classes) {
   const breaks = [];
   for (let i = 1; i < classes; i++) {
     breaks.push(finite[Math.floor((i / classes) * finite.length)]);
+  }
+  return breaks;
+}
+
+/** The population each area contributes to a national aggregate. Income
+ *  metrics are per-adult, the census shares are per-resident. */
+function weightsFor(key) {
+  const meta = metricMeta(key);
+  if (meta && meta.income && state.values.adults) return state.values.adults;
+  const pop = state.attrs.find((a) => a.key === 'population');
+  if (!pop) return null;
+  if (!state.values.__pop) {
+    state.values.__pop = Float64Array.from(pop.values, (v) => (v == null ? NaN : v));
+  }
+  return state.values.__pop;
+}
+
+/* The number the value scale diverges about: not the median area, but the
+ * national figure a person would quote. For a share that is the aggregate --
+ * weight each area's percentage by the people it describes and you get the
+ * true GB rate, 2.7% of adults on £100k+ rather than the 1.8% of the middle
+ * neighbourhood. For a level (a price, a modelled median) an average of
+ * averages is meaningless, so the anchor is the population-weighted median:
+ * the value in the middle *person's* area, not the middle area. */
+function nationalAnchor(key, values) {
+  const w = weightsFor(key);
+  const meta = metricMeta(key);
+  const isShare = meta && meta.format === 'pct';
+
+  if (w && isShare) {
+    let num = 0, den = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (Number.isFinite(values[i]) && Number.isFinite(w[i])) {
+        num += values[i] * w[i]; den += w[i];
+      }
+    }
+    if (den > 0) return num / den;
+  }
+
+  if (w) {
+    const rows = [];
+    let total = 0;
+    for (let i = 0; i < values.length; i++) {
+      if (Number.isFinite(values[i]) && Number.isFinite(w[i]) && w[i] > 0) {
+        rows.push([values[i], w[i]]); total += w[i];
+      }
+    }
+    if (total > 0) {
+      rows.sort((a, b) => a[0] - b[0]);
+      let acc = 0;
+      for (const [v, wt] of rows) {
+        acc += wt;
+        if (acc >= total / 2) return v;
+      }
+    }
+  }
+  return medianOf(values);
+}
+
+/** Percentile of the sorted finite values, 0-100. */
+function percentileOf(sorted, q) {
+  if (!sorted.length) return NaN;
+  const pos = (q / 100) * (sorted.length - 1);
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function sortedFinite(values) {
+  const out = [];
+  for (let i = 0; i < values.length; i++) {
+    if (Number.isFinite(values[i])) out.push(values[i]);
+  }
+  out.sort((a, b) => a - b);
+  return out;
+}
+
+/* Class boundaries spaced by *amount*, not by count.
+ *
+ * Quantile classes are what made the map misleading: they put half the country
+ * above the midpoint by construction, so a metric where the typical area sits
+ * at 1.8% still rendered as half deep blue. Here the middle class straddles the
+ * national rate and each step out multiplies it, so the darkest blue is
+ * genuinely exceptional rather than merely top-decile.
+ *
+ * Geometric rather than linear steps because every metric on this map is
+ * right-skewed: linear steps over a range that runs to £4m or to 21% would put
+ * nine areas in ten into the first class and flatten the whole picture. A ratio
+ * scale says something true and legible -- each class is a fixed multiple
+ * further from typical than the last.
+ *
+ * The outer breaks sit at the 0.5th and 99.5th percentiles rather than at the
+ * extremes so that one £4m outlier cannot swallow the rest of the ramp. */
+function valueBreaks(values, classes, anchor) {
+  const sorted = sortedFinite(values);
+  if (!sorted.length || !Number.isFinite(anchor)) return [];
+
+  const perArm = classes >> 1;                    // 5 either side of the middle
+  const lo = percentileOf(sorted, 0.5);
+  const hi = percentileOf(sorted, 99.5);
+  const breaks = [];
+
+  const arm = (outer, up) => {
+    const steps = [];
+    const geometric = outer > 0 && anchor > 0 &&
+                      (up ? outer > anchor : outer < anchor);
+    for (let k = 1; k <= perArm; k++) {
+      const f = k / perArm;
+      steps.push(geometric
+        ? anchor * Math.pow(outer / anchor, f)
+        : anchor + (outer - anchor) * f);
+    }
+    return steps;
+  };
+
+  // Downward arm, printed low-to-high; the middle class is the gap between the
+  // last downward step and the first upward one.
+  breaks.push(...arm(lo, false).reverse());
+  breaks.push(...arm(hi, true));
+  // Degenerate data (every area identical) can collapse the steps; a
+  // non-monotonic break list would silently mis-class, so bail to quantiles.
+  for (let i = 1; i < breaks.length; i++) {
+    if (!(breaks[i] > breaks[i - 1])) return [];
   }
   return breaks;
 }
@@ -273,14 +430,47 @@ function indexBoundingBoxes(geojson) {
   return boxes;
 }
 
+/* ---------------------------- selection ---------------------------- */
+
+/* Areas accumulate: a click adds, a click on something already in the set
+ * removes it. There is no modifier key to discover and it works the same on a
+ * phone, at the cost of needing the sea (or Clear) to start over. */
+
+function applySelectionFilter() {
+  if (!map || !map.getLayer('areas-selected')) return;
+  map.setFilter('areas-selected',
+    ['in', ['get', 'area_code'], ['literal', state.selection]]);
+}
+
+function setSelection(codes) {
+  state.selection = codes.filter((c) => state.index.has(c));
+  applySelectionFilter();
+  renderSelection();
+}
+
+function toggleArea(code) {
+  const at = state.selection.indexOf(code);
+  if (at >= 0) state.selection.splice(at, 1);
+  else state.selection.push(code);
+  applySelectionFilter();
+  renderSelection();
+}
+
+function clearAreaSelection() {
+  state.selection = [];
+  applySelectionFilter();
+  renderSelection();
+}
+
 function zoomToArea(code) {
   const box = state.bboxes && state.bboxes.get(code);
-  if (!box) return;
-  map.fitBounds([[box[0], box[1]], [box[2], box[3]]],
-                { padding: 120, maxZoom: 13, duration: 700 });
-  state.selected = code;
-  map.setFilter('areas-selected', ['==', ['get', 'area_code'], code]);
-  renderSelection(code);
+  if (box) {
+    map.fitBounds([[box[0], box[1]], [box[2], box[3]]],
+                  { padding: 120, maxZoom: 13, duration: 700 });
+  }
+  // Arriving from a ranking row or a search result is navigation, not
+  // accumulation: it replaces whatever was selected rather than adding to it.
+  setSelection([code]);
 }
 
 /* ------------------------------- map ------------------------------- */
@@ -330,23 +520,50 @@ function fillColourExpression() {
   return ['case', ['==', ['feature-state', 'cls'], null], noData, steps];
 }
 
+let lastClasses = null;
+
 function paintMap() {
-  cachedIndex = null;
   const values = currentValues();
   const isCategorical = state.metric === 'nation';
-  state.breaks = isCategorical ? [] : quantileBreaks(values, ramp().length);
-  state.median = isCategorical ? null : medianOf(values);
+  const classes = ramp().length;
 
-  if (!isCategorical) {
+  if (isCategorical) {
+    state.breaks = [];
+    state.median = null;
+    state.anchor = null;
+    state.scaleUsed = 'rank';
+  } else {
+    state.median = medianOf(values);
+    state.anchor = scaleMode() === 'value'
+      ? nationalAnchor(state.metric, values) : state.median;
+    const breaks = scaleMode() === 'value'
+      ? valueBreaks(values, classes, state.anchor) : [];
+    // valueBreaks returns nothing when the distribution cannot carry a ratio
+    // scale; quantiles always work, so they are the fallback rather than an
+    // error.
+    state.scaleUsed = breaks.length ? 'value' : 'rank';
+    state.breaks = breaks.length ? breaks : quantileBreaks(values, classes);
+
+    // Only push the areas whose class actually moved. Nudging one index weight
+    // leaves most of the country where it was, and 43,064 setFeatureState calls
+    // per frame is what made the sliders lag.
+    const next = new Int8Array(state.codes.length);
     for (let i = 0; i < state.codes.length; i++) {
-      map.setFeatureState({ source: 'areas', id: state.codes[i] },
-        { cls: classOf(values[i], state.breaks) });
+      const c = classOf(values[i], state.breaks);
+      next[i] = c === null ? -1 : c;
     }
+    for (let i = 0; i < next.length; i++) {
+      if (lastClasses && lastClasses[i] === next[i]) continue;
+      map.setFeatureState({ source: 'areas', id: state.codes[i] },
+        { cls: next[i] < 0 ? null : next[i] });
+    }
+    lastClasses = next;
   }
 
   applyColours();
   renderLegend(values);
   renderRankings();
+  if (typeof renderBrandCoverage === 'function') renderBrandCoverage();
 }
 
 /** The fill and its seam-covering line must always carry the same colour. */
@@ -442,9 +659,7 @@ function attachInteractions() {
   map.on('click', 'areas-fill', (e) => {
     const feature = e.features && e.features[0];
     if (!feature) return;
-    state.selected = feature.id;
-    map.setFilter('areas-selected', ['==', ['get', 'area_code'], feature.id]);
-    renderSelection(feature.id);
+    toggleArea(feature.id);
   });
 }
 
@@ -474,7 +689,9 @@ function showTooltip(e, code) {
     const meta = state.metrics.find((m) => m.key === state.metric);
     const label = meta ? meta.label : state.metric;
     const shown = formatValue(state.metric, Number.isFinite(v) ? v : null);
-    valueLine = '<div class="t-val">' + label + ': <strong>' + shown + '</strong></div>';
+    const phrase = rankPhrase(percentileRank(state.metric, v));
+    valueLine = '<div class="t-val">' + label + ': <strong>' + shown + '</strong></div>' +
+      (phrase ? '<div class="t-rank">' + phrase + '</div>' : '');
   }
 
   tooltipEl.innerHTML =
@@ -508,10 +725,45 @@ function renderMetricSelect() {
   sel.addEventListener('change', () => {
     state.metric = sel.value;
     $('#weights-panel').hidden = state.metric !== 'affluence_index';
+    state.sorted = {};
     paintMap();
-    if (state.selected) renderSelection(state.selected);
+    renderSelection();
   });
 }
+
+/* A slider is quick but imprecise, and a number field is precise but slow to
+ * explore with; the pair costs one extra input and removes the need to choose.
+ * Both write to the same value and each redraws the other. */
+function numberField(id, value, min, max, step, unit) {
+  return '<span class="value num-field">' +
+    '<input type="number" class="num" id="' + id + '" min="' + min + '" max="' + max +
+    '" step="' + step + '" value="' + value + '">' +
+    (unit ? '<span class="unit">' + unit + '</span>' : '') + '</span>';
+}
+
+function clampTo(v, min, max, fallback) {
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+
+/* Repaints are not cheap -- reclassing 43,064 areas and re-sorting the index --
+ * and a dragged slider fires input on every pixel. Coalesce to one repaint per
+ * animation frame so the handle keeps up with the pointer. */
+function rafThrottle(fn) {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; fn(); });
+  };
+}
+
+const repaintWeights = rafThrottle(() => {
+  cachedIndex = null;
+  if (state.sorted) delete state.sorted.affluence_index;
+  paintMap();
+  renderSelection();
+});
 
 function renderWeights() {
   const host = $('#weights');
@@ -522,28 +774,61 @@ function renderWeights() {
     // Each component carries its own caveats; surface them on hover rather
     // than making the reader go and find the pipeline source.
     if (c.description) wrap.title = c.description;
+    const pct = Math.round(c.weight * 100);
     wrap.innerHTML =
       '<div class="weight-head"><span class="label">' + c.label + '</span>' +
-      '<span class="value" data-for="' + c.key + '">' + Math.round(c.weight * 100) + '%</span></div>' +
-      '<input type="range" min="0" max="100" value="' + Math.round(c.weight * 100) +
+      numberField('w-' + c.key, pct, 0, 100, 1, '%') + '</div>' +
+      '<input type="range" min="0" max="100" value="' + pct +
       '" data-key="' + c.key + '">';
     host.appendChild(wrap);
   }
 
+  const apply = (key, pct) => {
+    const comp = state.components.find((c) => c.key === key);
+    if (!comp) return;
+    comp.weight = pct / 100;
+    repaintWeights();
+  };
+
   host.oninput = (e) => {
     const input = e.target;
-    if (input.type !== 'range') return;
-    const comp = state.components.find((c) => c.key === input.dataset.key);
-    comp.weight = Number(input.value) / 100;
-    host.querySelector('[data-for="' + comp.key + '"]').textContent = input.value + '%';
-    paintMap();
-    if (state.selected) renderSelection(state.selected);
+    if (input.type === 'range') {
+      const key = input.dataset.key;
+      const num = host.querySelector('#w-' + CSS.escape(key));
+      if (num) num.value = input.value;
+      apply(key, Number(input.value));
+      return;
+    }
+    if (input.type === 'number') {
+      // Mid-typing the field is briefly empty or out of range; ignore those
+      // keystrokes rather than snapping the slider to 0 under the cursor.
+      const raw = Number(input.value);
+      if (input.value === '' || !Number.isFinite(raw) || raw < 0 || raw > 100) return;
+      const key = input.id.slice(2);
+      const slider = host.querySelector('[data-key="' + CSS.escape(key) + '"]');
+      if (slider) slider.value = String(raw);
+      apply(key, raw);
+    }
+  };
+
+  // On blur, whatever is in the box has to become a legal value.
+  host.onchange = (e) => {
+    const input = e.target;
+    if (input.type !== 'number') return;
+    const key = input.id.slice(2);
+    const comp = state.components.find((c) => c.key === key);
+    const pct = clampTo(Math.round(Number(input.value)), 0, 100,
+                        Math.round((comp ? comp.weight : 0) * 100));
+    input.value = String(pct);
+    const slider = host.querySelector('[data-key="' + CSS.escape(key) + '"]');
+    if (slider) slider.value = String(pct);
+    apply(key, pct);
   };
 
   $('#reset-weights').onclick = () => {
     for (const c of state.components) c.weight = c.default_weight;
     renderWeights();
-    paintMap();
+    repaintWeights();
   };
 }
 
@@ -566,57 +851,261 @@ function renderLegend(values) {
     if (v > hi) hi = v;
   }
   const missing = state.codes.length - finiteCount;
-  const perClass = Math.round(finiteCount / ramp().length);
-
   const scale = ramp();
-  const mid = state.median;
+  const breaks = state.breaks;
+  // What was actually used, not what was asked for: a distribution too
+  // degenerate for a ratio scale falls back to quantiles, and the legend has to
+  // describe the classes on the map rather than the ones that were intended.
+  const byValue = state.scaleUsed === 'value';
 
-  host.innerHTML =
-    '<div class="legend-scale">' +
-      scale.map((c) => '<span style="background:' + c + '"></span>').join('') + '</div>' +
-    '<div class="legend-ends"><span>' + formatValue(state.metric, finiteCount ? lo : null) +
-      '</span><span class="legend-mid">median ' + formatValue(state.metric, mid) +
-      '</span><span>' + formatValue(state.metric, finiteCount ? hi : null) + '</span></div>' +
-    '<p class="legend-note">' + scale.length + ' quantile classes, about ' +
-      perClass.toLocaleString('en-GB') + ' areas each. Grey marks the GB median; ' +
-      'red is below it and blue above.' +
-      (missing ? ' ' + missing.toLocaleString('en-GB') + ' areas have no data.' : '') + '</p>';
-}
+  // Share of areas falling in each class, so the legend can say how much of the
+  // country each colour actually covers. This is the whole point of the value
+  // scale: under quantiles the answer was always "one eleventh".
+  const counts = new Array(scale.length).fill(0);
+  for (let i = 0; i < values.length; i++) {
+    const c = classOf(values[i], breaks);
+    if (c !== null) counts[c]++;
+  }
+  const share = (n) => finiteCount ? 100 * n / finiteCount : 0;
 
-function renderSelection(code) {
-  const host = $('#selection');
-  const attrs = areaAttrs(code);
-  const i = state.index.get(code);
+  const bandLabel = (k) => {
+    const from = k === 0 ? null : breaks[k - 1];
+    const to = k === scale.length - 1 ? null : breaks[k];
+    const range = from == null ? 'up to ' + compactValue(state.metric, to)
+                : to == null ? compactValue(state.metric, from) + ' and above'
+                : compactValue(state.metric, from) + ' – ' + compactValue(state.metric, to);
+    return range + '  ·  ' + share(counts[k]).toFixed(1) + '% of areas';
+  };
 
-  const rows = [];
-  rows.push(['Nation', (attrs && attrs.nation) || nationFromCode(code)]);
-  if (attrs && attrs.population != null) rows.push(['Population', fmt.count(attrs.population)]);
+  const swatches = '<div class="legend-scale">' + scale.map((c, k) =>
+    '<span style="background:' + c + '"' +
+    (breaks.length ? ' title="' + bandLabel(k) + '"' : '') + '></span>').join('') + '</div>';
 
-  if (i !== undefined) {
-    for (const m of state.metrics) {
-      if (m.key === 'nation') continue;
-      const v = m.key === 'affluence_index'
-        ? indexValues()[i]
-        : (state.values[m.key] || [])[i];
-      rows.push([m.label, formatValue(m.key, Number.isFinite(v) ? v : null)]);
-    }
+  if (!byValue) {
+    const perClass = Math.round(finiteCount / scale.length);
+    // The affluence index is a percentile rank, so equal-count classes are not
+    // a compromise there -- they are what the number already is. Every other
+    // metric gets the warning, because that is the shape the map used to have.
+    const note = RANKED_METRICS.has(state.metric)
+      ? scale.length + ' equal-count classes. This measure is a percentile rank ' +
+        'against the rest of GB rather than a quantity, so half the country sits ' +
+        'above the midpoint by definition.'
+      : scale.length + ' equal-count classes, about ' +
+        perClass.toLocaleString('en-GB') + ' areas each, so exactly half the map ' +
+        'is blue whatever the numbers are. Good for ranking, misleading about level.';
+    host.innerHTML = scaleControl() + swatches +
+      '<div class="legend-ends"><span>' + compactValue(state.metric, finiteCount ? lo : NaN) +
+        '</span><span class="legend-mid">median ' + compactValue(state.metric, state.median) +
+        '</span><span>' + compactValue(state.metric, finiteCount ? hi : NaN) + '</span></div>' +
+      '<p class="legend-note">' + note +
+        (missing ? ' ' + missing.toLocaleString('en-GB') + ' areas have no data.' : '') + '</p>';
+    attachScaleControl(host);
+    return;
   }
 
-  host.innerHTML =
-    '<h2>Selected area</h2>' +
-    '<div class="sel-name">' + ((attrs && attrs.area_name) || code) + '</div>' +
-    '<div class="sel-code">' + code + '</div>' +
-    '<dl class="sel-rows">' + rows.map(([k, v]) =>
-      '<div class="sel-row"><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('') + '</dl>' +
-    renderBands(i);
+  let above = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (Number.isFinite(values[i]) && values[i] > state.anchor) above++;
+  }
+  const meta = metricMeta(state.metric);
+  const anchorWord = meta && meta.format === 'pct' ? 'GB rate' : 'typical';
+
+  host.innerHTML = scaleControl() + swatches +
+    '<div class="legend-ends"><span>' + compactValue(state.metric, breaks[0]) +
+      '</span><span class="legend-mid">' + anchorWord + ' ' +
+      compactValue(state.metric, state.anchor) +
+      '</span><span>' + compactValue(state.metric, breaks[breaks.length - 1]) + '</span></div>' +
+    '<p class="legend-note">Classes are value ranges, each a fixed multiple ' +
+      'further from the national figure than the last. Grey spans ' +
+      compactValue(state.metric, state.anchor) +
+      (meta && meta.format === 'pct' ? ', the share across GB as a whole' : '') +
+      '. Roughly ' + share(above).toFixed(0) + '% of areas sit above it, and ' +
+      share(counts[counts.length - 1]).toFixed(1) + '% reach the darkest blue. ' +
+      'Hover a swatch for its range.' +
+      (missing ? ' ' + missing.toLocaleString('en-GB') + ' areas have no data.' : '') + '</p>';
+  attachScaleControl(host);
 }
 
-/** Modelled distribution of adults across income bands, as inline bars. */
-function renderBands(i) {
-  if (i === undefined || !state.bandLabels) return '';
+/* Both scales are honest about different things, so this is a control rather
+ * than a choice made once in the source: value answers "how much?", rank
+ * answers "compared with everywhere else?". */
+function scaleControl() {
+  if (RANKED_METRICS.has(state.metric) || state.metric === 'nation') return '';
+  const v = state.scaleMode === 'value';
+  return '<div class="stats-mode scale-mode">' +
+    '<button type="button" data-scale="value"' + (v ? ' class="on"' : '') +
+      ' title="Classes are value ranges around the national figure">By value</button>' +
+    '<button type="button" data-scale="rank"' + (v ? '' : ' class="on"') +
+      ' title="Equal-count classes: each colour holds the same number of areas">By rank</button>' +
+    '</div>';
+}
+
+function attachScaleControl(host) {
+  const el = host.querySelector('.scale-mode');
+  if (!el) return;
+  el.onclick = (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || btn.dataset.scale === state.scaleMode) return;
+    state.scaleMode = btn.dataset.scale;
+    paintMap();
+  };
+}
+
+/* Where an area sits against the rest of GB. Colour alone cannot say this once
+ * the classes are value ranges -- two areas can share a swatch and be twenty
+ * percentile points apart -- so the number is printed. */
+function sortedValuesFor(key) {
+  if (!state.sorted) state.sorted = {};
+  if (!state.sorted[key]) {
+    state.sorted[key] = sortedFinite(
+      key === 'affluence_index' ? indexValues() : (state.values[key] || []));
+  }
+  return state.sorted[key];
+}
+
+function percentileRank(key, v) {
+  if (!Number.isFinite(v)) return NaN;
+  const s = sortedValuesFor(key);
+  if (!s.length) return NaN;
+  let lo = 0, hi = s.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (s[mid] <= v) lo = mid + 1; else hi = mid;
+  }
+  return 100 * lo / s.length;
+}
+
+function rankPhrase(pct) {
+  if (!Number.isFinite(pct)) return '';
+  if (pct >= 50) return 'top ' + Math.max(0.1, 100 - pct).toFixed(pct > 99 ? 1 : 0) + '% of GB';
+  return 'bottom ' + Math.max(0.1, pct).toFixed(pct < 1 ? 1 : 0) + '% of GB';
+}
+
+/** Metric value for one row, wherever it lives. */
+function metricAt(key, i) {
+  const v = key === 'affluence_index' ? indexValues()[i] : (state.values[key] || [])[i];
+  return Number.isFinite(v) ? v : NaN;
+}
+
+/* Combining areas is not summing them. A share has to be re-weighted by the
+ * people it describes, or two neighbourhoods of 900 and 9,000 would count
+ * equally; a level is averaged the same way; only genuine counts add up. */
+function combineMetric(key, rows) {
+  const meta = metricMeta(key);
+  if (meta && meta.format === 'count') {
+    let s = 0, any = false;
+    for (const i of rows) {
+      const v = metricAt(key, i);
+      if (Number.isFinite(v)) { s += v; any = true; }
+    }
+    return any ? s : NaN;
+  }
+  const w = weightsFor(key);
+  let num = 0, den = 0;
+  for (const i of rows) {
+    const v = metricAt(key, i);
+    const wt = w && Number.isFinite(w[i]) ? w[i] : 1;
+    if (Number.isFinite(v) && wt > 0) { num += v * wt; den += wt; }
+  }
+  return den > 0 ? num / den : NaN;
+}
+
+function selectionRows() {
+  return state.selection.map((c) => state.index.get(c)).filter((i) => i !== undefined);
+}
+
+function populationValues() {
+  const found = state.attrs.find((a) => a.key === 'population');
+  return found ? found.values : null;
+}
+
+function renderSelection() {
+  const host = $('#selection');
+  const codes = state.selection;
+
+  if (!codes.length) {
+    host.innerHTML = '<h2>Selected areas</h2>' +
+      '<p class="empty">Click an area on the map. Click more to add them; ' +
+      'click a selected area again to drop it.</p>';
+    return;
+  }
+
+  const rows = selectionRows();
+  const multi = codes.length > 1;
+  const single = codes[0];
+  const attrs = multi ? null : areaAttrs(single);
+
+  const out = [];
+  if (multi) {
+    out.push(['Areas', codes.length.toLocaleString('en-GB')]);
+    const popArr = populationValues();
+    let popTotal = 0;
+    if (popArr) for (const i of rows) if (popArr[i] != null) popTotal += popArr[i];
+    if (popTotal) out.push(['Population', fmt.count(popTotal)]);
+    if (state.values.adults) {
+      let ad = 0;
+      for (const i of rows) if (Number.isFinite(state.values.adults[i])) ad += state.values.adults[i];
+      if (ad) out.push(['Adults 16+', fmt.count(ad)]);
+    }
+  } else {
+    out.push(['Nation', (attrs && attrs.nation) || nationFromCode(single)]);
+    if (attrs && attrs.population != null) out.push(['Population', fmt.count(attrs.population)]);
+  }
+
+  for (const m of state.metrics) {
+    if (m.key === 'nation') continue;
+    const v = multi ? combineMetric(m.key, rows) : metricAt(m.key, rows[0]);
+    let cell = formatValue(m.key, Number.isFinite(v) ? v : null);
+    if (m.key === state.metric && !multi) {
+      const phrase = rankPhrase(percentileRank(m.key, v));
+      if (phrase) cell += ' <span class="sel-rank">' + phrase + '</span>';
+    }
+    out.push([m.label, cell]);
+  }
+
+  const chips = multi
+    ? '<div class="sel-chips">' + codes.map((c) => {
+        const a = areaAttrs(c);
+        const name = (a && a.area_name) || c;
+        return '<button type="button" class="sel-chip" data-code="' + c + '" ' +
+          'title="Remove ' + name + '">' + name + '<i>&times;</i></button>';
+      }).join('') + '</div>'
+    : '';
+
+  host.innerHTML =
+    '<h2>' + (multi ? 'Selected areas &mdash; ' + codes.length : 'Selected area') +
+      '<button type="button" class="sel-clear" id="sel-clear">Clear</button></h2>' +
+    (multi
+      ? '<div class="sel-name">Combined</div>' + chips
+      : '<div class="sel-name">' + ((attrs && attrs.area_name) || single) + '</div>' +
+        '<div class="sel-code">' + single + '</div>') +
+    '<dl class="sel-rows">' + out.map(([k, v]) =>
+      '<div class="sel-row"><dt>' + k + '</dt><dd>' + v + '</dd></div>').join('') + '</dl>' +
+    (multi ? '<p class="legend-note">Shares and levels are population-weighted ' +
+      'across the selection; counts are summed.</p>' : '') +
+    renderBands(rows);
+
+  const clear = host.querySelector('#sel-clear');
+  if (clear) clear.onclick = clearAreaSelection;
+  const chipHost = host.querySelector('.sel-chips');
+  if (chipHost) {
+    chipHost.onclick = (e) => {
+      const chip = e.target.closest('.sel-chip');
+      if (chip) toggleArea(chip.dataset.code);
+    };
+  }
+}
+
+/** Modelled distribution of adults across income bands, as inline bars.
+ *  Summed over however many areas are selected. */
+function renderBands(rows) {
+  if (!rows || !rows.length || !state.bandLabels) return '';
   const counts = state.bandLabels.map((_, b) => {
     const arr = state.values['band_' + b];
-    return arr ? arr[i] : NaN;
+    if (!arr) return NaN;
+    let s = 0;
+    for (const i of rows) if (Number.isFinite(arr[i])) s += arr[i];
+    return s;
   });
   const total = counts.reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
   if (!total) return '';
@@ -848,6 +1337,7 @@ async function main() {
     map.fitBounds(GB_BOUNDS, { padding: 24, animate: false });
 
     renderMetricSelect();
+    renderSelection();
     if (state.components.length) renderWeights();
     $('#weights-panel').hidden = state.metric !== 'affluence_index';
     attachInteractions();

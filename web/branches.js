@@ -57,6 +57,7 @@ const BRAND_COLOURS = {
   'The Nottingham': '#8A1538',
   'Newcastle Building Society': '#00558C',
   'The West Brom': '#004B87',
+  'Cumberland Building Society': '#007A53',
   'Other': '#7A7975',
 };
 const DEFAULT_BRAND_COLOUR = '#7A7975';
@@ -65,7 +66,7 @@ const branchState = {
   all: [],            // every branch
   brands: [],         // [{brand_group, n}]
   selected: new Set(),
-  focused: null,      // a single branch, when one has been clicked
+  focusedKeys: new Set(),  // individually clicked branches, in click order
   radiusKm: 10,
   active: false,
   grid: null,         // cell key -> array of area indices
@@ -78,6 +79,7 @@ const branchState = {
   // 'composition' = of the people reached, how are they distributed?
   // 'coverage'    = of GB's people in each band, how many are reached?
   statsMode: 'composition',
+  coverageSort: 'coverage',
 };
 
 function brandColour(brand) {
@@ -151,10 +153,21 @@ function selectedBranches() {
   return branchState.all.filter((b) => branchState.selected.has(b.b));
 }
 
-/** Branches whose catchment is currently being measured: the clicked one if
- *  there is one, otherwise every branch of the ticked brands. */
+/** The individually clicked branches, in the order they were clicked. */
+function focusedBranches() {
+  const out = [];
+  for (const key of branchState.focusedKeys) {
+    const b = branchState.byKey && branchState.byKey.get(key);
+    if (b) out.push(b);
+  }
+  return out;
+}
+
+/** Branches whose catchment is currently being measured: the clicked ones if
+ *  any have been clicked, otherwise every branch of the ticked brands. */
 function catchmentBranches() {
-  return branchState.focused ? [branchState.focused] : selectedBranches();
+  const focused = focusedBranches();
+  return focused.length ? focused : selectedBranches();
 }
 
 function computeCatchment(branches) {
@@ -313,9 +326,8 @@ function refreshBranchLayers() {
     })),
   });
 
-  map.setFilter('branch-focus', branchState.focused
-    ? ['==', ['get', 'id'], branchKey(branchState.focused)]
-    : ['==', ['get', 'id'], '__none__']);
+  map.setFilter('branch-focus',
+    ['in', ['get', 'id'], ['literal', Array.from(branchState.focusedKeys)]]);
 
   // Drawing thousands of overlapping rings is slow and unreadable; past the cap
   // the dimming of areas outside the catchment carries the message instead.
@@ -334,6 +346,8 @@ function branchKey(b) {
   return b.x + ',' + b.y + ',' + b.n;
 }
 
+let lastCovered = null;
+
 function applyCatchmentDimming(branches) {
   const hoverFull = ['boolean', ['feature-state', 'hover'], false];
   if (!branchState.active || !branches.length) {
@@ -344,10 +358,15 @@ function applyCatchmentDimming(branches) {
 
   branchState.lastTotals = computeCatchment(branches);
   const covered = branchState.covered;
+  // Dragging the radius moves the catchment edge, not its interior: only a
+  // thin ring of areas changes state per step, so pushing all 43,064 every
+  // time was most of the cost of moving the slider.
   for (let i = 0; i < state.codes.length; i++) {
+    if (lastCovered && lastCovered[i] === covered[i]) continue;
     map.setFeatureState({ source: 'areas', id: state.codes[i] },
       { covered: covered[i] === 1 });
   }
+  lastCovered = covered;
   map.setPaintProperty('areas-fill', 'fill-opacity',
     ['case', hoverFull, 1, ['boolean', ['feature-state', 'covered'], false], 0.92, 0.12]);
 }
@@ -379,6 +398,7 @@ async function initBranches() {
   renderBranchPanel();
   attachBranchInteractions();
   refreshBranchLayers();
+  renderBrandCoverage();
 }
 
 function renderBranchPanel() {
@@ -401,7 +421,7 @@ function renderBranchPanel() {
     '</div>' +
     '<div class="weight" style="margin-top:12px">' +
       '<div class="weight-head"><span class="label">Catchment radius</span>' +
-      '<span class="value" id="radius-value">' + branchState.radiusKm.toFixed(1) + ' km</span></div>' +
+      numberField('radius-num', branchState.radiusKm, 0.5, 40, 0.5, 'km') + '</div>' +
       '<input type="range" id="radius" min="0.5" max="40" step="0.5" value="' +
         branchState.radiusKm + '">' +
     '</div>' +
@@ -418,9 +438,9 @@ function renderBranchPanel() {
     if (cb.checked) branchState.selected.add(cb.value);
     else {
       branchState.selected.delete(cb.value);
-      // A focused pin whose brand was just unticked is no longer on the map.
-      if (branchState.focused && branchState.focused.b === cb.value) {
-        branchState.focused = null;
+      // Focused pins whose brand was just unticked are no longer on the map.
+      for (const b of focusedBranches()) {
+        if (b.b === cb.value) branchState.focusedKeys.delete(branchKey(b));
       }
     }
     refreshBranchLayers();
@@ -431,13 +451,31 @@ function renderBranchPanel() {
   };
   host.querySelector('#brands-none').onclick = () => {
     branchState.selected.clear();
-    branchState.focused = null;
+    branchState.focusedKeys.clear();
     renderBranchPanel(); refreshBranchLayers();
   };
+  const setRadius = (km, echoTo) => {
+    branchState.radiusKm = km;
+    if (echoTo !== 'slider') host.querySelector('#radius').value = String(km);
+    if (echoTo !== 'number') host.querySelector('#radius-num').value = String(km);
+    refreshCatchment();
+  };
+
   host.querySelector('#radius').oninput = (e) => {
-    branchState.radiusKm = Number(e.target.value);
-    host.querySelector('#radius-value').textContent = branchState.radiusKm.toFixed(1) + ' km';
-    refreshBranchLayers();
+    setRadius(Number(e.target.value), 'slider');
+  };
+  host.querySelector('#radius-num').oninput = (e) => {
+    // Ignore half-typed values rather than snapping the map to 0.5 km while
+    // someone is still reaching for the second digit.
+    const v = Number(e.target.value);
+    if (e.target.value === '' || !Number.isFinite(v) || v < 0.5 || v > 40) return;
+    setRadius(v, 'number');
+  };
+  host.querySelector('#radius-num').onchange = (e) => {
+    const v = clampTo(Math.round(Number(e.target.value) * 2) / 2, 0.5, 40,
+                      branchState.radiusKm);
+    e.target.value = String(v);
+    setRadius(v);
   };
   host.querySelector('#catchment-on').onchange = (e) => {
     branchState.active = e.target.checked;
@@ -449,7 +487,8 @@ function renderCatchmentStats(branches) {
   const host = document.querySelector('#catchment-stats');
   if (!host) return;
 
-  const focused = branchState.focused;
+  const focused = focusedBranches();
+  const one = focused.length === 1 ? focused[0] : null;
 
   if (!branches.length) {
     host.innerHTML = '<p class="empty">Select one or more brands.</p>';
@@ -457,8 +496,9 @@ function renderCatchmentStats(branches) {
   }
   if (!branchState.active) {
     host.innerHTML = '<p class="empty">' +
-      (focused ? focused.n + ' selected. ' : branches.length.toLocaleString('en-GB') +
-       ' branches shown. ') +
+      (one ? one.n + ' selected. '
+       : focused.length ? focused.length + ' branches selected. '
+       : branches.length.toLocaleString('en-GB') + ' branches shown. ') +
       'Tick &ldquo;Show catchment&rdquo; for population reach.</p>';
     return;
   }
@@ -491,11 +531,13 @@ function renderCatchmentStats(branches) {
     return peak > 0 ? 100 * t.bands[k] / peak : 0;
   };
 
-  const heading = focused
-    ? '<h2>' + focused.n + '</h2>' +
+  const heading = one
+    ? '<h2>' + one.n + '</h2>' +
       '<div class="focus-brand"><i class="brand-dot" style="background:' +
-        brandColour(focused.b) + '"></i>' + focused.b +
-        ' &middot; single branch</div>'
+        brandColour(one.b) + '"></i>' + one.b + ' &middot; single branch</div>'
+    : focused.length
+    ? '<h2>' + focused.length + ' branches</h2>' +
+      '<div class="focus-brand">' + focusBrandChips(focused) + '</div>'
     : '<h2>Catchment reach</h2>';
 
   const above100kLabel = coverage
@@ -506,9 +548,8 @@ function renderCatchmentStats(branches) {
     : fmt.count(above100k) + ' (' + headline.toFixed(1) + '%)';
 
   const rows = [
-    focused
-      ? ['Radius', branchState.radiusKm.toFixed(1) + ' km']
-      : ['Branches', branches.length.toLocaleString('en-GB')],
+    ['Radius', branchState.radiusKm.toFixed(1) + ' km'],
+    ['Branches', branches.length.toLocaleString('en-GB')],
     ...connectionRows(focused, branches),
     ['Small areas covered', t.areas.toLocaleString('en-GB')],
     ['Adults reached', fmt.count(t.adults) +
@@ -543,8 +584,10 @@ function renderCatchmentStats(branches) {
         'fall inside the catchment.'
       : 'Percentages are the share of <em>the population reached</em> that sits ' +
         'in each band.') + '</p>' +
-    '<p class="legend-note">' + (focused
-      ? 'This branch only. Click the sea to go back to the whole selection.'
+    '<p class="legend-note">' + (focused.length
+      ? (one ? 'This branch only. ' : 'These ' + focused.length + ' branches only. ') +
+        'Click another pin to add it, a selected pin to drop it, or the sea to ' +
+        'go back to the whole brand selection.'
       : 'Union of all selected catchments, so overlapping branches are counted ' +
         'once. An area is in or out by its centre point.') + '</p>' +
     '</div>';
@@ -565,14 +608,23 @@ function renderCatchmentStats(branches) {
  *  A proxy for how reachable a branch is without a car -- nearest station,
  *  how many modes are within a walk, bus density, and how many people live
  *  close enough to walk in. Not a drive time, and not trying to be one. */
+function focusBrandChips(focused) {
+  const brands = [];
+  for (const b of focused) if (!brands.includes(b.b)) brands.push(b.b);
+  return brands.map((brand) =>
+    '<span class="focus-chip"><i class="brand-dot" style="background:' +
+    brandColour(brand) + '"></i>' + brand + '</span>').join('');
+}
+
 function connectionRows(focused, branches) {
-  if (focused) {
-    if (focused.c == null) return [];
-    const d = focused.cd || [];
+  if (focused.length === 1) {
+    const only = focused[0];
+    if (only.c == null) return [];
+    const d = only.cd || [];
     const rail = d[0] == null ? 'none within 6 km'
       : d[0] < 1000 ? d[0] + ' m' : (d[0] / 1000).toFixed(1) + ' km';
     return [
-      ['Connections', '<strong>' + focused.c.toFixed(1) + '</strong> / 10'],
+      ['Connections', '<strong>' + only.c.toFixed(1) + '</strong> / 10'],
       ['&nbsp;&nbsp;Nearest station', rail],
       ['&nbsp;&nbsp;Transport modes', String(d[1] ?? '--')],
       ['&nbsp;&nbsp;Bus stops within 500 m', String(d[2] ?? '--')],
@@ -583,7 +635,12 @@ function connectionRows(focused, branches) {
   const rated = branches.filter((b) => b.c != null);
   if (!rated.length) return [];
   const mean = rated.reduce((s, b) => s + b.c, 0) / rated.length;
-  return [['Mean connections', mean.toFixed(1) + ' / 10']];
+  const rows = [['Mean connections', mean.toFixed(1) + ' / 10']];
+  if (focused.length > 1) {
+    const best = rated.reduce((a, b) => (b.c > a.c ? b : a));
+    rows.push(['Best connected', best.n + ' (' + best.c.toFixed(1) + ')']);
+  }
+  return rows;
 }
 
 /** GB totals per income band, for the coverage denominator. Computed once. */
@@ -608,21 +665,26 @@ function nationalBandTotals() {
   return branchState.national;
 }
 
-/** Clear both the area selection and the focused branch. */
+/** Clear both the area selection and every focused branch. */
 function clearAllSelection() {
   let changed = false;
-  if (branchState.focused) { branchState.focused = null; changed = true; }
-  if (state.selected) {
-    state.selected = null;
-    map.setFilter('areas-selected', ['==', ['get', 'area_code'], '__none__']);
-    const host = document.querySelector('#selection');
-    if (host) {
-      host.innerHTML = '<h2>Selected area</h2>' +
-        '<p class="empty">Click an area on the map.</p>';
-    }
-    changed = true;
-  }
+  if (branchState.focusedKeys.size) { branchState.focusedKeys.clear(); changed = true; }
+  if (state.selection.length) { clearAreaSelection(); }
   if (changed) refreshBranchLayers();
+}
+
+/* refreshBranchLayers recomputes the catchment, reclasses every area and
+ * rebuilds the stats panel. A dragged radius slider fires far faster than that
+ * can run, so coalesce to one pass per frame. */
+let catchmentQueued = false;
+function refreshCatchment() {
+  if (catchmentQueued) return;
+  catchmentQueued = true;
+  requestAnimationFrame(() => {
+    catchmentQueued = false;
+    refreshBranchLayers();
+    renderBrandCoverage();
+  });
 }
 
 function attachBranchInteractions() {
@@ -653,10 +715,13 @@ function attachBranchInteractions() {
     // them, so the floats coming back never equal the ones that went in.
     const match = branchState.byKey.get(f.properties.id);
     if (!match) { console.warn('unmatched pin', f.properties.id); return; }
-    branchState.focused = match;
-    // Measuring one branch is only meaningful with the catchment drawn, so
+    const key = branchKey(match);
+    // Pins accumulate the same way areas do: click to add, click again to drop.
+    if (branchState.focusedKeys.has(key)) branchState.focusedKeys.delete(key);
+    else branchState.focusedKeys.add(key);
+    // Measuring named branches is only meaningful with the catchment drawn, so
     // turn it on rather than making the click appear to do nothing.
-    if (!branchState.active) {
+    if (!branchState.active && branchState.focusedKeys.size) {
       branchState.active = true;
       const cb = document.querySelector('#catchment-on');
       if (cb) cb.checked = true;
@@ -671,6 +736,237 @@ function attachBranchInteractions() {
       { layers: ['branch-points', 'areas-fill'] });
     if (!hits.length) clearAllSelection();
   });
+}
+
+/* ------------------------- network coverage ------------------------- */
+
+/* "Which bank is closest to the people this metric is about?"
+ *
+ * Every brand's whole network is measured at the current radius, whether or not
+ * it is ticked on the map, because the answer is a comparison. Two numbers make
+ * it, and they say different things:
+ *
+ *   Coverage -- the share of the metric's target population inside the network's
+ *               catchment. Big networks win; that is the honest answer to "who
+ *               reaches most of them".
+ *   Focus    -- that share divided by the network's share of all adults. Above
+ *               1.0 means the branches sit where the metric is high rather than
+ *               merely everywhere, which is what separates a targeted network
+ *               from a large one.
+ *
+ * These are not brand groups anyone runs, so they are left out of the table.
+ */
+const COVERAGE_EXCLUDE = new Set(['Other', 'Unknown']);
+
+/* Dropdown labels are column headings -- "Higher managerial & professional" --
+ * and do not survive being dropped into a sentence about people. These do. */
+const TARGET_NOUNS = {
+  pct_100k_plus: 'adults on £100k+',
+  nssec_higher: 'higher managerial &amp; professional residents',
+  qual_level4: 'degree-qualified residents',
+  cars_2plus: 'residents in households with two or more cars',
+};
+
+const coverageCache = { radius: null, masks: null };
+let coverageTimer = null;
+
+function brandCoverageMasks() {
+  if (coverageCache.masks && coverageCache.radius === branchState.radiusKm) {
+    return coverageCache.masks;
+  }
+  const n = state.codes.length;
+  const masks = new Map();
+  for (const b of branchState.all) {
+    if (COVERAGE_EXCLUDE.has(b.b)) continue;
+    let m = masks.get(b.b);
+    if (!m) { m = new Uint8Array(n); masks.set(b.b, m); }
+    markCovered(b.y, b.x, branchState.radiusKm, m);
+  }
+  coverageCache.masks = masks;
+  coverageCache.radius = branchState.radiusKm;
+  return masks;
+}
+
+function adultsArray() {
+  return state.values.adults || weightsFor('population');
+}
+
+/* The population a metric is actually about.
+ *
+ * For a share there is a real headcount behind it -- the adults over £100k, the
+ * degree holders -- and multiplying the percentage by the people it describes
+ * recovers it. For a level (a price, a modelled median) no such headcount
+ * exists, so the target is the adults living in the top fifth of the country by
+ * that measure. Both end up as "people per area", which is what a catchment can
+ * sum. */
+function targetMass(key) {
+  const n = state.codes.length;
+  const meta = metricMeta(key);
+  if (!meta) return null;
+
+  if (key === 'pct_100k_plus' && state.values.n_100k_plus) {
+    return { arr: state.values.n_100k_plus, noun: TARGET_NOUNS[key], exact: true };
+  }
+
+  if (meta.format === 'pct') {
+    const vals = state.values[key];
+    const w = weightsFor(key);
+    if (vals && w) {
+      const arr = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        arr[i] = Number.isFinite(vals[i]) && Number.isFinite(w[i])
+          ? vals[i] * w[i] / 100 : 0;
+      }
+      return { arr, noun: TARGET_NOUNS[key] || meta.label.toLowerCase(), exact: true };
+    }
+  }
+
+  const vals = key === 'affluence_index' ? indexValues() : state.values[key];
+  const w = adultsArray();
+  if (!vals || !w) return null;
+  const order = [];
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    if (Number.isFinite(vals[i]) && Number.isFinite(w[i]) && w[i] > 0) {
+      order.push(i); total += w[i];
+    }
+  }
+  if (!total) return null;
+  order.sort((a, b) => vals[b] - vals[a]);
+  const arr = new Float64Array(n);
+  let acc = 0;
+  for (const i of order) {
+    if (acc >= 0.2 * total) break;
+    arr[i] = w[i];
+    acc += w[i];
+  }
+  return {
+    arr,
+    noun: 'adults in the top fifth of areas by ' + meta.label.toLowerCase(),
+    exact: false,
+  };
+}
+
+function sumOver(mask, arr) {
+  let s = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] && Number.isFinite(arr[i])) s += arr[i];
+  }
+  return s;
+}
+
+function nationalSum(arr) {
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) if (Number.isFinite(arr[i])) s += arr[i];
+  return s;
+}
+
+function coverageHeading() {
+  return '<h2>Network coverage</h2>';
+}
+
+function renderBrandCoverage() {
+  const host = document.querySelector('#brand-coverage');
+  if (!host) return;
+  if (!branchState.all.length || !branchState.grid) { host.innerHTML = ''; return; }
+
+  if (state.metric === 'nation') {
+    host.innerHTML = coverageHeading() +
+      '<p class="empty">Pick a numeric metric to compare branch networks.</p>';
+    return;
+  }
+
+  // The first pass at a new radius walks all 4,698 branches; render the
+  // heading now and do the work off the paint, or the slider stutters.
+  if (!coverageCache.masks || coverageCache.radius !== branchState.radiusKm) {
+    host.innerHTML = coverageHeading() + '<p class="empty">Measuring every ' +
+      'network within ' + branchState.radiusKm.toFixed(1) + ' km&hellip;</p>';
+    clearTimeout(coverageTimer);
+    coverageTimer = setTimeout(() => { brandCoverageMasks(); drawBrandCoverage(); }, 20);
+    return;
+  }
+  drawBrandCoverage();
+}
+
+function drawBrandCoverage() {
+  const host = document.querySelector('#brand-coverage');
+  if (!host) return;
+
+  const target = targetMass(state.metric);
+  const adults = adultsArray();
+  if (!target || !adults) { host.innerHTML = ''; return; }
+
+  const masks = brandCoverageMasks();
+  const targetTotal = nationalSum(target.arr);
+  const adultTotal = nationalSum(adults);
+  if (!targetTotal || !adultTotal) { host.innerHTML = ''; return; }
+
+  const counts = new Map(branchState.brands.map((b) => [b.brand_group, b.n]));
+  const rows = [];
+  for (const [brand, mask] of masks) {
+    const cov = 100 * sumOver(mask, target.arr) / targetTotal;
+    const reach = 100 * sumOver(mask, adults) / adultTotal;
+    rows.push({
+      brand,
+      n: counts.get(brand) || 0,
+      cov,
+      reach,
+      lift: reach > 0 ? cov / reach : 0,
+    });
+  }
+
+  const byFocus = branchState.coverageSort === 'focus';
+  rows.sort((a, b) => (byFocus ? b.lift - a.lift : b.cov - a.cov));
+
+  const peak = Math.max(1, ...rows.map((r) => r.lift));
+
+  const list = rows.map((r) => {
+    const width = byFocus ? 100 * r.lift / peak : r.cov;
+    const value = byFocus ? r.lift.toFixed(2) + '&times;' : r.cov.toFixed(1) + '%';
+    const title = r.brand + ' — ' + r.n.toLocaleString('en-GB') + ' branches · ' +
+      r.cov.toFixed(1) + '% of ' + target.noun + ' · ' +
+      r.reach.toFixed(1) + '% of all adults · focus ' + r.lift.toFixed(2) + '×';
+    return '<div class="cov-row" title="' + title.replace(/"/g, '&quot;') + '">' +
+      '<i class="brand-dot" style="background:' + brandColour(r.brand) + '"></i>' +
+      '<span class="cov-name">' + r.brand + '</span>' +
+      '<span class="cov-bar"><i style="width:' + width.toFixed(1) + '%"></i></span>' +
+      '<span class="cov-val">' + value + '</span></div>';
+  }).join('');
+
+  host.innerHTML = coverageHeading() +
+    '<div class="stats-mode cov-mode">' +
+      '<button type="button" data-sort="coverage"' + (byFocus ? '' : ' class="on"') +
+        ' title="Share of the target population within reach">Coverage</button>' +
+      '<button type="button" data-sort="focus"' + (byFocus ? ' class="on"' : '') +
+        ' title="Coverage relative to the network\'s share of all adults">Focus</button>' +
+    '</div>' +
+    '<p class="legend-note cov-lead">' + (byFocus
+      ? 'Each network&rsquo;s coverage of ' + target.noun + ' divided by its ' +
+        'reach into the adult population at large. Above 1.0&times; means the ' +
+        'branches sit where those people are concentrated rather than simply ' +
+        'wherever there are people.'
+      : 'Share of GB&rsquo;s ' + target.noun + ' within ' +
+        branchState.radiusKm.toFixed(1) + ' km of a branch of each brand.') +
+    '</p>' +
+    '<div class="cov-list">' + list + '</div>' +
+    '<p class="legend-note">' + (target.exact
+      ? 'Counted from each area&rsquo;s own estimate, weighted by the people it ' +
+        'describes.'
+      : 'This measure has no headcount of its own, so the target is the adults ' +
+        'living in the highest-scoring fifth of the country.') +
+    ' Radius follows the catchment slider. Networks overlap heavily, so these ' +
+    'shares do not add to 100%. Groups labelled &ldquo;Other&rdquo; and ' +
+    '&ldquo;Unknown&rdquo; are left out.</p>';
+
+  const modes = host.querySelector('.cov-mode');
+  if (modes) {
+    modes.onclick = (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      branchState.coverageSort = btn.dataset.sort;
+      drawBrandCoverage();
+    };
+  }
 }
 
 /* ---------------------------- place labels ---------------------------- */

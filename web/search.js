@@ -141,11 +141,11 @@ function searchBranches(raw) {
 
 /* ------------------------------ actions ------------------------------ */
 
+/* A search result replaces the selection rather than adding to it: arriving
+ * somewhere new is not the same gesture as building a set of areas by hand. */
 function selectAreaByCode(code) {
   if (!code) return;
-  state.selected = code;
-  map.setFilter('areas-selected', ['==', ['get', 'area_code'], code]);
-  renderSelection(code);
+  setSelection([code]);
 }
 
 function showSearchMarker(lon, lat) {
@@ -191,7 +191,8 @@ function applyResult(result) {
     const b = result.branch;
     // Make sure the brand is actually on the map before focusing its pin.
     branchState.selected.add(b.b);
-    branchState.focused = b;
+    branchState.focusedKeys.clear();
+    branchState.focusedKeys.add(branchKey(b));
     if (!branchState.active) {
       branchState.active = true;
       const cb = document.querySelector('#catchment-on');

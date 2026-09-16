@@ -113,6 +113,20 @@ button:hover { background: var(--surface-3); }
 .weight-head .value { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 11px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 
+/* The slider's readout is an input in its own right, so a value can be typed
+   when the drag will not land on it. Sized to the digits it has to hold. */
+.num-field { display: inline-flex; align-items: baseline; gap: 3px; }
+.num-field .unit { color: var(--text-muted); font-size: 11px; }
+input.num {
+  width: 52px; padding: 2px 4px; text-align: right;
+  font: inherit; font-size: 11px; font-variant-numeric: tabular-nums;
+  color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 4px;
+  -moz-appearance: textfield;
+}
+input.num::-webkit-outer-spin-button,
+input.num::-webkit-inner-spin-button { margin-left: 2px; }
+
 /* ---------- legend ---------- */
 .legend-scale { display: flex; height: 14px; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
 .legend-scale span { flex: 1; }
@@ -120,8 +134,10 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;
 }
-/* The middle label marks the national median the ramp diverges about. */
+/* The middle label marks the national figure the ramp diverges about. */
 .legend-mid { opacity: .7; font-style: italic; }
+.legend-scale span { cursor: help; }
+.scale-mode { margin: 0 0 9px; }
 .legend-note { margin-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
 
 .legend-cats { display: flex; flex-direction: column; gap: 6px; }
@@ -130,6 +146,31 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 
 /* ---------- selection ---------- */
 #selection .empty { font-size: 12px; color: var(--text-muted); }
+#selection h2, #brand-coverage h2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sel-clear {
+  width: auto; border: none; background: none; padding: 0;
+  font-size: 10px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--accent); cursor: pointer;
+}
+.sel-clear:hover { background: none; text-decoration: underline; }
+
+/* One chip per selected area, each its own remove button: with a dozen areas
+   in the set, the map alone stops being a usable way to find the odd one out. */
+.sel-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0 2px; }
+.sel-chip {
+  width: auto; display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 5px 2px 7px; font-size: 10.5px; line-height: 1.5;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-secondary);
+  max-width: 100%;
+}
+.sel-chip:hover { background: var(--surface-3); color: var(--text-primary); }
+.sel-chip i { font-style: normal; color: var(--text-muted); font-size: 12px; }
+.sel-chip:hover i { color: var(--text-primary); }
+.sel-rank {
+  color: var(--text-muted); font-size: 10.5px; font-variant-numeric: normal;
+  margin-left: 4px;
+}
 .sel-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
 .sel-code { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
 .sel-rows { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
@@ -152,6 +193,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 #tooltip .t-name { font-weight: 600; margin-bottom: 1px; }
 #tooltip .t-meta { color: var(--text-muted); font-size: 11px; }
 #tooltip .t-val { margin-top: 4px; font-variant-numeric: tabular-nums; }
+#tooltip .t-rank { color: var(--text-muted); font-size: 10.5px; }
 
 #status {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
@@ -254,6 +296,29 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
 }
 #catchment-stats .bands h2 { margin-bottom: 2px; text-transform: none;
   font-size: 12.5px; letter-spacing: 0; color: var(--text-primary); }
+
+.focus-brand { flex-wrap: wrap; }
+.focus-chip { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---------- network coverage ---------- */
+#brand-coverage .empty { font-size: 12px; color: var(--text-muted); }
+.cov-lead { margin-top: 0; margin-bottom: 8px; }
+.cov-list { max-height: 300px; overflow-y: auto; margin: 0 -3px; padding: 0 3px; }
+.cov-row {
+  display: grid;
+  grid-template-columns: 9px 1fr 52px 42px;
+  align-items: center; gap: 7px;
+  font-size: 11.5px; padding: 2px 0;
+}
+.cov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-bar { background: var(--surface-3); border-radius: 2px; height: 9px; overflow: hidden; }
+.cov-bar i {
+  display: block; height: 100%; background: var(--accent);
+  border-radius: 2px; min-width: 1px;
+}
+.cov-val {
+  text-align: right; font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
 
 /* ---------- catchment stats mode toggle ---------- */
 .stats-mode {
