@@ -80,3 +80,7 @@ correct; presenting the small-area estimates as HMRC figures would not be.
 The same applies to the affluence index and the travel connections rating: both
 are constructed here, from the sources above, using methods documented in the
 README.
+
+These outputs, and the code that produces them, are all rights reserved. See
+[LICENSE](LICENSE). That is a statement about the original work only; it does
+not and cannot license any of the third-party data above.

@@ -905,6 +905,25 @@ broken.
   means all rights reserved, which may or may not be what you want — worth a
   decision before publishing.
 
+## Licence and ownership
+
+The code and the modelled outputs in this repository are original work and are
+**all rights reserved** &mdash; see [LICENSE](LICENSE). That covers the pipeline,
+the web application, the affluence index, the small-area income model and the
+travel connections rating. None of those is a published statistic; they are
+constructed here, by methods documented above, and no upstream publisher has any
+claim over them.
+
+The data those methods consume is a separate question and is answered in
+[ATTRIBUTION.md](ATTRIBUTION.md): almost all of it is Open Government Licence,
+two published files carry ODbL share-alike, and one source is not open at all
+and never leaves the machine.
+
+Nothing in the open-data licences transfers ownership of the work above, and
+nothing in LICENSE purports to license the data.
+
+---
+
 ## Roadmap
 
 - **Phase 1** — GB affluence index from comparable inputs, with adjustable
