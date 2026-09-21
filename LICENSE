@@ -1,0 +1,53 @@
+UK Affluence Map
+Copyright (c) 2026 Rory Colthurst. All rights reserved.
+
+
+WHAT THIS COVERS
+
+The original work in this repository, namely:
+
+  - the pipeline (pipeline/, build_dist.py, deploy_gh_pages.py, serve.py)
+  - the web application (web/index.html, web/*.js, web/style.css)
+  - the affluence index and its component definitions
+  - the modelled small-area income distribution and band estimates
+  - the travel connections rating
+  - the documentation, including README.md and ATTRIBUTION.md
+
+These were conceived, written and validated by the copyright holder. The
+modelled figures in particular are constructed here; they are not published
+statistics, and no upstream publisher is responsible for them or has any claim
+over them. The methods are set out in README.md.
+
+
+WHAT THIS DOES NOT COVER
+
+The third-party data the pipeline consumes and the files it derives from that
+data. Those carry their own licences, which are set out in full in
+ATTRIBUTION.md and summarised here:
+
+  - Most sources are Open Government Licence v3.0: attribution required,
+    commercial use permitted, no share-alike.
+  - Two published files, web/data/gb_branches.json and web/data/gb_places.json,
+    are derived from OpenStreetMap and are therefore offered under the Open
+    Database Licence (ODbL), as ATTRIBUTION.md records.
+
+Nothing in this file purports to license third-party data, and nothing in those
+third-party licences transfers ownership of the original work above.
+
+
+TERMS
+
+No licence is granted. You may not copy, modify, distribute, sublicense or make
+derivative works of the original work described above without the prior written
+permission of the copyright holder.
+
+Viewing the published site does not grant a licence to its source.
+
+Permission for use beyond this is available on request; enquiries to the
+copyright holder.
+
+
+THIS IS NOT AN OPEN SOURCE LICENCE
+
+It is deliberately restrictive so that the position stays open. Rights can be
+granted later; they cannot be withdrawn once given.
