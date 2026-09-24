@@ -72,31 +72,50 @@ that is entirely OGL. You lose branch catchments and city labels.
 
 ## Operators' own branch lists — used to delete, never to publish
 
-**One input, no output: `pipeline/verify_branches.py`.**
+**Inputs with no output: `pipeline/verify_branches.py`.**
 
-Barclays publishes a branch finder. The project reads it to answer one question
-about records it already has — *is this branch still open?* — and deletes the
-ones that are not.
+Most of the big high-street banks publish a branch finder. The project reads
+them to answer one question about records it already has — *is this branch
+still open?* — and deletes the OSM records that are not.
 
-| What is taken | What is done with it |
+| Operator | Route in | What is taken |
+|---|---|---|
+| Barclays | sitemap named in `robots.txt`, then branch pages | postcode |
+| Lloyds Bank, Halifax, Bank of Scotland | the group's shared locator, via its sitemaps | coordinate, postcode, brand |
+| TSB | locator sitemap, then branch pages | coordinate, postcode |
+| Nationwide | `/branches/` pages, via the sitemap index | coordinate, postcode |
+| HSBC UK | `/branch-list/` pages, via the sitemap | coordinate, postcode, location type |
+| NatWest, RBS | the search endpoint natwest.com's own locator calls | coordinate, postcode, brand |
+| Metro Bank | store pages, via the sitemap | postcode |
+
+In every case the route is one the operator's own site uses, and nothing in its
+`robots.txt` disallows it. Requests are spaced 0.6 s apart per site under an
+honest user agent, and the results are cached so each site is walked once.
+
+**Nothing is redistributed.** No coordinate, address, name or opening hour from
+any operator reaches `web/data/gb_branches.json`. Where an operator publishes a
+coordinate it is used as a matching key and nothing else; the pins on the map
+are OSM's, and the layer remains OSM-derived and ODbL with closed entries
+removed. The cached lists stay in `data/raw/`, which is gitignored.
+
+This is deliberately a narrow use. A publicly advertised fact about which shops
+are open is used to remove stale records from somebody else's database, which
+improves the accuracy of what is published without adding anything to it. If
+that ever changes — if branch locations start coming *from* an operator rather
+than from OSM — the licensing question changes with it and has to be asked
+again.
+
+### Two that were not checked, and why
+
+| Operator | Why not |
 |---|---|
-| The sitemap that `robots.txt` names, which disallows nothing under `/branch-finder/` | Enumerate branch pages, one request |
-| One postcode per branch page, fetched once and cached | Decide whether an existing OSM record still corresponds to something |
+| Santander | The locator sits behind Imperva bot protection |
+| Virgin Money | Branch data is served by a third-party store-locator API, called with Virgin Money's own key |
 
-Nothing is redistributed. No coordinate, address, name or opening hour from
-Barclays reaches `web/data/gb_branches.json`; the branch layer remains
-OSM-derived and ODbL, with closed entries removed. The cached pages stay in
-`data/raw/`, which is gitignored.
-
-This is deliberately a narrower use than the postcode lending data below, and
-the difference is the point. There, values would have been published. Here, a
-publicly advertised fact about which shops are open is used to remove stale
-records from somebody else's database — which improves the accuracy of what is
-published without adding anything to it.
-
-If that ever changes — if branch coordinates start coming from an operator
-rather than from OSM — the licensing question changes with it and has to be
-asked again.
+Neither is a technical wall so much as a line. Getting past bot detection, or
+borrowing another company's API credentials, is a different act from reading a
+page the operator publishes, and it does not become a different act because the
+data behind it would be useful. Both stay OSM-only, and the map says so.
 
 ---
 

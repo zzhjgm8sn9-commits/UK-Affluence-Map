@@ -416,15 +416,21 @@ def main() -> None:
     brands = (out.groupby("brand_group").size().sort_values(ascending=False)
               .rename("n").reset_index())
 
-    closures_path = INTERIM / "branch_closures.parquet"
-    verified = (sorted(pd.read_parquet(closures_path)["brand_group"].unique())
-                if closures_path.exists() else [])
+    # Read from the verification summary rather than inferred from which brands
+    # have closures: a brand checked and found fully accurate is verified too,
+    # and the brands that could not be checked need their reasons carried to
+    # the app, not just their absence.
+    summary_path = INTERIM / "branch_verification.json"
+    summary = (json.loads(summary_path.read_text(encoding="utf-8"))
+               if summary_path.exists() else {"verified": {}, "unverifiable": {}})
+    verified = sorted(summary.get("verified", {}))
     brands["verified"] = brands["brand_group"].isin(verified)
 
     payload = {
         "generated": time.strftime("%Y-%m-%d"),
         "attribution": "© OpenStreetMap contributors (ODbL)",
         "verified_brands": verified,
+        "unverifiable": summary.get("unverifiable", {}),
         "brands": brands.to_dict("records"),
         "branches": [
             {"b": r.brand_group, "n": r.label, "y": round(r.lat, 5),

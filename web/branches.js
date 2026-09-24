@@ -81,6 +81,7 @@ const branchState = {
   statsMode: 'composition',
   coverageSort: 'coverage',
   verified: new Set(),   // brands checked against the operator's own list
+  unverifiable: {},      // brand -> why it could not be checked
 };
 
 /* OSM records that a branch exists far more reliably than that one has closed,
@@ -101,11 +102,16 @@ function verifiedNote() {
     return 'Counts come from OpenStreetMap, which records openings far more ' +
       'reliably than closures, so every brand here is over-counted.';
   }
-  return '\u2713 ' + names.join(', ') + ' checked against the bank\u2019s own ' +
-    'published list, with closed records removed. Every other brand is ' +
-    'OpenStreetMap only, which records openings far more reliably than ' +
-    'closures &mdash; so the others are over-counted by an unknown amount and ' +
-    'comparisons flatter them.';
+  // The brands that could not be checked are the ones a reader would most
+  // likely compare against, so they are named, with the reason.
+  const blocked = Object.entries(branchState.unverifiable)
+    .map(([brand, why]) => brand + ' (' + why + ')');
+  return '\u2713 marks the ' + names.length + ' brands checked against the ' +
+    'bank\u2019s own published list, with closed records removed. ' +
+    (blocked.length ? 'Not checked: ' + blocked.join('; ') + '. ' : '') +
+    'Unticked brands are OpenStreetMap only, which records openings far more ' +
+    'reliably than closures, so they are over-counted by an unknown amount ' +
+    'and comparisons flatter them.';
 }
 
 function brandColour(brand) {
@@ -413,6 +419,7 @@ async function initBranches() {
   branchState.all = payload.branches;
   branchState.brands = payload.brands;
   branchState.verified = new Set(payload.verified_brands || []);
+  branchState.unverifiable = payload.unverifiable || {};
   // Index by the same key the map features carry, so a clicked pin can be
   // resolved back to its branch record.
   branchState.byKey = new Map(branchState.all.map((b) => [branchKey(b), b]));

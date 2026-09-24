@@ -603,35 +603,60 @@ Individual networks differ measurably. Barclays' 421 branches reach 13.1m adults
 of whom **3.4%** are on £100k+ — a network that skews noticeably more affluent
 than the branch estate as a whole.
 
-### Verifying against the operator's own list
+### Verifying against the operators' own lists
 
 OSM records that a branch *exists* far more reliably than that one has *stopped*
-existing: nobody walks past a shuttered bank and thinks to edit the map. The
-error is therefore large, and it is one-directional.
+existing: nobody walks past a shuttered bank and thinks to edit the map. So the
+error is large and one-directional — and it differs by brand, which is worse
+than a uniform error, because it distorts every comparison between them.
+Barclays was 421 OSM records against 211 branches Barclays itself publishes,
+and only four of the 421 carried a `disused:` or `abandoned:` tag.
 
-Barclays is the clearest case. OSM carried **421** Barclays features in GB.
-Barclays publishes **211** branches. Only four of the OSM records carried a
-`disused:` or `abandoned:` tag, so tag-based filtering would have removed four
-of the roughly 230 that had gone.
+`pipeline/verify_branches.py` reads each operator's published list and deletes
+the OSM records that no longer match anything on it. **981 records across ten
+brands**, taking the map from 4,698 branches to 3,717:
 
-`pipeline/verify_branches.py` reads the operator's own list and deletes what no
-longer matches:
+| Brand | OSM | Kept | Closed | Published (GB) | Not in OSM | Median match |
+|---|---|---|---|---|---|---|
+| Nationwide | 554 | 537 | 17 | 591 | 54 | 4 m |
+| HSBC UK | 369 | 318 | 51 | 335 | 17 | 9 m |
+| Lloyds Bank | 544 | 305 | 239 | 325 | 20 | 6 m |
+| NatWest | 388 | 240 | 148 | 253 | 13 | 7 m |
+| Halifax | 364 | 218 | 146 | 237 | 19 | 6 m |
+| Barclays | 421 | 191 | 230 | 207 | 16 | 16 m |
+| TSB | 217 | 160 | 57 | 177 | 17 | 6 m |
+| Metro Bank | 77 | 75 | 2 | 77 | 2 | 45 m |
+| Bank of Scotland | 108 | 63 | 45 | 69 | 6 | 5 m |
+| RBS | 94 | 48 | 46 | 63 | 15 | 6 m |
 
-1. Barclays' sitemap — named in their `robots.txt`, which disallows nothing
-   under `/branch-finder/` — lists every branch page. One request.
-2. Each branch page is fetched once and cached, and only the **postcode** is
-   taken. The pages carry no JSON-LD and no coordinates; the address is a `<p>`
-   of `<br />`-separated lines ending in the postcode.
-3. Postcodes are geocoded from the ONSPD lookup the project already holds, so
-   no external geocoder is involved. Belfast, Jersey, Guernsey and the Isle of
-   Man drop out here, correctly — the map is GB only.
-4. Each published branch is matched to at most one OSM record, greedily by
-   distance. One-to-one matters: OSM often carries both a node and the building
-   way for the same branch, and letting two records claim one live branch would
-   quietly keep a duplicate alive.
+Nationwide's 17 is the one that reads oddest and is the most believable: it has
+publicly committed to keeping every branch open to at least 2028, so its OSM
+records have mostly stayed true.
 
-**421 → 191.** Nine matches in ten land within 80 m, and the threshold only has
-to settle the tail. Every candidate beyond 250 m was read by hand:
+**How each list is reached.** Every route is one the operator's own site uses,
+with nothing in `robots.txt` disallowing it; requests are spaced 0.6 s apart per
+site under an honest user agent, and cached so each site is walked once.
+
+| Operator | Route | Carries |
+|---|---|---|
+| Barclays | sitemap → branch pages | postcode in an address `<p>` |
+| Lloyds, Halifax, Bank of Scotland | one shared Yext locator behind three domains | schema.org microdata; brand from the page title |
+| TSB | Yext locator | microdata, plus a type badge |
+| Nationwide | `/branches/` pages | microdata |
+| HSBC UK | `/branch-list/` pages | JSON-LD; location type in the slug |
+| NatWest, RBS | the search endpoint natwest.com's own locator calls | coordinates, brand, hub flag |
+| Metro Bank | store pages | postcode |
+
+Where an operator publishes a coordinate it is used as the matching key;
+otherwise the postcode is geocoded from the ONSPD lookup the project already
+holds. Northern Ireland, Jersey, Guernsey and the Isle of Man fall out there —
+the map is GB only.
+
+**Matching** is greedy nearest-neighbour, one published branch to one OSM
+record, within 500 m. One-to-one matters: OSM often holds both a node and the
+building way for a single branch, and letting two records claim it would keep a
+duplicate alive. For the Barclays list, which is postcodes only, every
+candidate beyond 250 m was read by hand:
 
 | Distance | Published | OSM record | Same branch? |
 |---|---|---|---|
@@ -641,39 +666,81 @@ to settle the tail. Every candidate beyond 250 m was read by hand:
 | 1,288 m | Welwyn Garden City, Howardsgate | Ludwick Way | no |
 | 1,453 m | South Shields, King Street | North Shields | no |
 
-500 m is the gap between the last true pair and the first false one. Erring low
-is not the safe direction: too tight deletes a branch that is open, too loose
-keeps one that is shut.
+500 m is the gap between the last true pair and the first false one. Where
+coordinates are published the matches sit far tighter — medians of 4–9 m.
+Every match beyond 250 m across all ten brands was read: most are branches
+inside large shopping centres (Merry Hill, Westfield Stratford, Meadowhall, the
+MetroCentre, Festival Place), where the published point and the OSM node sit at
+different ends of the mall, and the rest land on the same named street. The one
+doubtful pair is RBS Drummonds at Charing Cross, matched to an OSM record on
+Jermyn Street at 461 m, which may keep one closed RBS branch alive. That is the
+tolerated direction — too tight deletes an open branch, too loose keeps a shut
+one.
 
-**It removes; it never adds.** 16 published branches have no OSM record at all
-and stay missing — this step has no licence to mint points from Barclays' data
-and no coordinates to mint them from, since postcode centroids are not branch
-locations. 191 is a floor on accuracy, not a guarantee of it.
+### What the operators' lists include that isn't a branch
 
-**Nothing from Barclays is redistributed.** The published layer stays
-OSM-derived and ODbL; the operator's list is used to delete records, not to
-create them. See [ATTRIBUTION.md](ATTRIBUTION.md).
+The largest source of error was not OSM but the lists themselves, which mix
+branches with other kinds of location. Left in, any of them near a closed
+branch would have kept that branch's OSM record alive:
 
-### One verified brand is its own problem
+- **Nationwide** lists 161 PayPoint cash-deposit counters in corner shops
+  alongside its 604 branches. Filtered by page title.
+- **TSB** lists 42 pop-ups, 5 pods and a banking hub alongside 177 branches.
+  The page's own type is the badge in its hero block; the same badge in a
+  teaser block belongs to a *nearby* location, which is why a banking hub's
+  page can carry the words "Pop-up Location" without being one. Filtering them
+  out closed seven more TSB records that pop-ups had been keeping alive.
+- **HSBC** lists 235 banking hubs and 12 cash hubs alongside its branches. The
+  kind is in the URL slug. Self-service branches — HSBC premises with machines
+  and no counter — count; a customer can walk into one.
+- **NatWest and RBS** flag banking hubs with a field of their own.
+- **Lloyds Banking Group** lists cashpoints, supermarket cash machines,
+  community bankers and hubs, each named in the slug.
 
-Correcting Barclays alone makes Barclays look worse than its rivals for the
-wrong reason. Its network coverage of GB's £100k+ adults at 10 km drops from
-82.1% to **73.1%** — not because the branches moved, but because the others are
-still counted with their closures in. Every brand here is over-counted; only
-one has been checked.
+And one that went the other way. The group's branches are town/address pages,
+and the first pass took depth as the test. A street number with a slash —
+"176/180 Bute Street Mall" — splits the URL a level deeper, and **95 real
+branches** were missed that way, 80 of them Halifax, whose addresses use slashed
+number ranges. Every one of their OSM records would have been deleted.
 
-So the app marks it rather than hiding it. Verified brands carry a ✓ in the
-filter list and in the network coverage table, and the coverage table carries a
-standing warning that a network with closed branches still counted reaches
-further on the chart than it does in life. `LENDERS`-style registries are the
-fix — each bank needs its own scraper, and the pipeline step is written to take
-more.
+### What it cannot do
+
+**It removes; it never adds.** 179 published branches have no OSM record at all
+and stay missing. There is no licence to mint points from an operator's data,
+and adding them would change what the published layer is. The counts after
+filtering are a floor on accuracy, not a guarantee of it.
+
+**Nothing is redistributed.** No coordinate, address or name from any operator
+reaches the published file; the pins are OSM's, and the layer stays ODbL with
+closed entries removed. See [ATTRIBUTION.md](ATTRIBUTION.md).
+
+### Two brands are not verified, and they are labelled
+
+| Brand | Why not |
+|---|---|
+| Santander | The locator sits behind Imperva bot protection |
+| Virgin Money | Branch data comes from a third-party store-locator API, called with Virgin Money's own key |
+
+Getting past bot detection, or borrowing another company's API credentials, is
+a different act from reading a page the operator publishes, and it does not
+become a different one because the data would be useful. Both stay OSM-only.
+
+That matters for the comparison, and the map says so rather than hiding it.
+With ten brands corrected, Santander's 364 is now second only to Nationwide —
+not because it is the second-largest network, but because it is the one big
+brand still counted with its closures in. At 10 km it ranks second on coverage
+of GB's £100k+ adults (82.6%) for the same reason. Verified brands carry a ✓ in
+the filter list and the coverage table, the branch panel names the two that are
+not and why, and the coverage table carries a standing warning. The smaller
+building societies — Yorkshire, Skipton and the rest — are unverified too; each
+would need its own route in, and Yorkshire publishes no usable sitemap.
 
 ### Caveats
 
 - **OSM is contributed, not authoritative.** Good in towns, patchier in rural
   areas, and slow to reflect closures — which is what `verify_branches.py`
-  exists to correct, so far for one brand out of twenty-five.
+  corrects for the ten largest brands it can reach. The rest are still OSM
+  only.
 - **ODbL, not OGL.** This is the one non-open-government source in the project.
   Share-alike obligations attach to derived databases, which matters if output
   containing this layer leaves the organisation. It is deliberately isolated in
