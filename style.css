@@ -1,0 +1,473 @@
+/* Palette roles come from the data-viz reference palette: sequential blue for
+   magnitude, categorical slots 1-3 for the three nations (the only three that
+   validate under all-pairs, which is the rule choropleths fall under). */
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --surface-2: #f3f2f0;
+  --surface-3: #e8e7e4;
+  --border: #d9d8d4;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7975;
+
+  --seq-100: #cde2fb;
+  --seq-200: #9ec5f4;
+  --seq-300: #6da7ec;
+  --seq-400: #3987e5;
+  --seq-500: #256abf;
+  --seq-600: #184f95;
+  --seq-700: #0d366b;
+
+  --nation-1: #2a78d6;
+  --nation-2: #eb6834;
+  --nation-3: #1baf7a;
+
+  --no-data: #e3e2df;
+  --accent: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --surface-2: #232322;
+    --surface-3: #2d2d2b;
+    --border: #3a3a37;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --no-data: #333331;
+    --nation-1: #3987e5;
+    --nation-2: #d95926;
+    --nation-3: #199e70;
+    --accent: #3987e5;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --surface-2: #232322;
+  --surface-3: #2d2d2b;
+  --border: #3a3a37;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e86;
+  --no-data: #333331;
+  --nation-1: #3987e5;
+  --nation-2: #d95926;
+  --nation-3: #199e70;
+  --accent: #3987e5;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+}
+
+#app { display: flex; height: 100vh; }
+
+/* ---------- sidebar ---------- */
+#sidebar {
+  width: 330px; flex: none; height: 100%;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+
+.brand { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+.brand h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.brand p { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
+
+.panel { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.panel:last-child { border-bottom: none; }
+.panel h2 {
+  margin: 0 0 10px; font-size: 11px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted);
+}
+
+select, button, input[type="search"] {
+  font: inherit; color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 9px; width: 100%;
+}
+select:focus, button:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { cursor: pointer; }
+button:hover { background: var(--surface-3); }
+
+/* ---------- weight sliders ---------- */
+.weight { margin-bottom: 12px; }
+.weight-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; margin-bottom: 3px;
+}
+.weight-head .label { color: var(--text-secondary); }
+.weight-head .value { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 11px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; }
+
+/* The slider's readout is an input in its own right, so a value can be typed
+   when the drag will not land on it. Sized to the digits it has to hold. */
+.num-field { display: inline-flex; align-items: baseline; gap: 3px; }
+.num-field .unit { color: var(--text-muted); font-size: 11px; }
+input.num {
+  width: 52px; padding: 2px 4px; text-align: right;
+  font: inherit; font-size: 11px; font-variant-numeric: tabular-nums;
+  color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 4px;
+  -moz-appearance: textfield;
+}
+input.num::-webkit-outer-spin-button,
+input.num::-webkit-inner-spin-button { margin-left: 2px; }
+
+/* ---------- legend ---------- */
+.legend-scale { display: flex; height: 14px; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+.legend-scale span { flex: 1; }
+.legend-ends {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+/* The middle label marks the national figure the ramp diverges about. */
+.legend-mid { opacity: .7; font-style: italic; }
+.legend-scale span { cursor: help; }
+.scale-mode { margin: 0 0 9px; }
+.legend-note { margin-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+
+.credit { border-top: 1px solid var(--border); padding-top: 9px; margin-top: 10px; }
+
+.legend-cats { display: flex; flex-direction: column; gap: 6px; }
+.legend-cat { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+.legend-cat i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+
+/* ---------- selection ---------- */
+#selection .empty { font-size: 12px; color: var(--text-muted); }
+#selection h2, #brand-coverage h2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sel-clear {
+  width: auto; border: none; background: none; padding: 0;
+  font-size: 10px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--accent); cursor: pointer;
+}
+.sel-clear:hover { background: none; text-decoration: underline; }
+
+/* One chip per selected area, each its own remove button: with a dozen areas
+   in the set, the map alone stops being a usable way to find the odd one out. */
+.sel-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0 2px; }
+.sel-chip {
+  width: auto; display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 5px 2px 7px; font-size: 10.5px; line-height: 1.5;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-1); color: var(--text-secondary);
+  max-width: 100%;
+}
+.sel-chip:hover { background: var(--surface-3); color: var(--text-primary); }
+.sel-chip i { font-style: normal; color: var(--text-muted); font-size: 12px; }
+.sel-chip:hover i { color: var(--text-primary); }
+.sel-rank {
+  color: var(--text-muted); font-size: 10.5px; font-variant-numeric: normal;
+  margin-left: 4px;
+}
+.sel-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.sel-code { font-size: 11px; color: var(--text-muted); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+.sel-rows { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.sel-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.sel-row dt { color: var(--text-secondary); margin: 0; }
+.sel-row dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ---------- map ---------- */
+#map { flex: 1; height: 100%; background: var(--surface-1); }
+.maplibregl-ctrl-attrib { font-size: 10px; }
+
+#tooltip {
+  position: absolute; pointer-events: none; z-index: 10;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 10px; font-size: 12px;
+  box-shadow: 0 3px 12px rgba(0,0,0,.16);
+  max-width: 260px; display: none;
+}
+#tooltip .t-name { font-weight: 600; margin-bottom: 1px; }
+#tooltip .t-meta { color: var(--text-muted); font-size: 11px; }
+#tooltip .t-val { margin-top: 4px; font-variant-numeric: tabular-nums; }
+#tooltip .t-rank { color: var(--text-muted); font-size: 10.5px; }
+
+#status {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 20px; font-size: 13px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.14); z-index: 20;
+}
+#status.hidden { display: none; }
+
+.map-wrap { position: relative; flex: 1; height: 100%; }
+
+.toolbar {
+  position: absolute; top: 12px; right: 12px; z-index: 5;
+  display: flex; gap: 6px;
+}
+.toolbar button { width: auto; padding: 6px 10px; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+/* ---------- modelled income bands ---------- */
+.bands { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.band-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 38px 46px;
+  align-items: center; gap: 7px;
+  font-size: 11px; margin-bottom: 3px;
+}
+.band-label { color: var(--text-secondary); white-space: nowrap; }
+.band-bar {
+  background: var(--surface-3); border-radius: 2px; height: 9px; overflow: hidden;
+}
+.band-bar i {
+  display: block; height: 100%; background: var(--accent);
+  border-radius: 2px; min-width: 1px;
+}
+.band-pct, .band-n {
+  text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted);
+}
+.band-pct { color: var(--text-primary); }
+
+/* ---------- rankings ---------- */
+.rank-head {
+  margin: 12px 0 5px; font-size: 11px; font-weight: 600;
+  color: var(--text-secondary);
+}
+.rank-head:first-of-type { margin-top: 2px; }
+.rank-list { list-style: none; margin: 0; padding: 0; }
+.rank-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: baseline; gap: 7px;
+  padding: 3px 5px; margin: 0 -5px;
+  font-size: 11.5px; border-radius: 4px; cursor: pointer;
+}
+.rank-row:hover { background: var(--surface-3); }
+.rank-n { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 10px; }
+.rank-name {
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rank-val {
+  color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+/* ---------- branches ---------- */
+.branch-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.branch-actions button { font-size: 11px; padding: 4px 8px; width: auto; flex: 1; }
+
+.brand-list {
+  max-height: 190px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-1); padding: 5px 7px;
+}
+.brand-row {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 7px;
+  font-size: 11.5px; padding: 2px 0; cursor: pointer;
+}
+.brand-row input { margin: 0; accent-color: var(--accent); }
+.brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-n { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: 10.5px; }
+
+.catchment-toggle {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-secondary); cursor: pointer; margin-top: 2px;
+}
+.catchment-toggle input { margin: 0; accent-color: var(--accent); }
+
+#catchment-stats .empty { font-size: 11px; color: var(--text-muted); margin: 10px 0 0; }
+
+/* ---------- brand identity ---------- */
+.brand-row { grid-template-columns: auto auto 1fr auto; }
+.brand-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  flex: none; display: inline-block;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.18);
+}
+.focus-brand {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-muted); margin: -4px 0 8px;
+}
+#catchment-stats .bands h2 { margin-bottom: 2px; text-transform: none;
+  font-size: 12.5px; letter-spacing: 0; color: var(--text-primary); }
+
+.focus-brand { flex-wrap: wrap; }
+.focus-chip { display: inline-flex; align-items: center; gap: 5px; }
+
+/* A brand checked against its operator's own list. Deliberately quiet: it
+   marks the accurate rows, and the note carries the meaning. */
+.verified {
+  font-style: normal; margin-left: 4px; font-size: 10px;
+  color: var(--nation-3); cursor: help;
+}
+.legend-note.warn {
+  border-left: 2px solid var(--nation-2);
+  padding-left: 8px; margin-top: 9px;
+}
+
+/* ---------- network coverage ---------- */
+#brand-coverage .empty { font-size: 12px; color: var(--text-muted); }
+.cov-lead { margin-top: 0; margin-bottom: 8px; }
+.cov-list { max-height: 300px; overflow-y: auto; margin: 0 -3px; padding: 0 3px; }
+.cov-row {
+  display: grid;
+  grid-template-columns: 9px 1fr 52px 42px;
+  align-items: center; gap: 7px;
+  font-size: 11.5px; padding: 2px 0;
+}
+.cov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cov-bar { background: var(--surface-3); border-radius: 2px; height: 9px; overflow: hidden; }
+.cov-bar i {
+  display: block; height: 100%; background: var(--accent);
+  border-radius: 2px; min-width: 1px;
+}
+.cov-val {
+  text-align: right; font-variant-numeric: tabular-nums; color: var(--text-primary);
+}
+
+/* ---------- catchment stats mode toggle ---------- */
+.stats-mode {
+  display: flex; gap: 0; margin: 2px 0 12px;
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.stats-mode button {
+  flex: 1; width: auto; border: none; border-radius: 0;
+  font-size: 11px; padding: 5px 6px;
+  background: var(--surface-1); color: var(--text-secondary);
+}
+.stats-mode button + button { border-left: 1px solid var(--border); }
+.stats-mode button.on {
+  background: var(--accent); color: #fff; font-weight: 600;
+}
+.stats-mode button.on:hover { background: var(--accent); }
+
+/* ---------- search ---------- */
+#search-panel { position: relative; }
+#search { width: 100%; }
+#search::-webkit-search-cancel-button { cursor: pointer; }
+
+#search-results {
+  margin-top: 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-1); overflow: hidden;
+  max-height: 280px; overflow-y: auto;
+}
+.search-row {
+  display: grid; grid-template-columns: 34px 1fr auto;
+  align-items: baseline; gap: 8px;
+  width: 100%; text-align: left;
+  border: none; border-radius: 0; background: none;
+  padding: 6px 9px; font-size: 12px; cursor: pointer;
+}
+.search-row + .search-row { border-top: 1px solid var(--border); }
+.search-row:hover, .search-row.active { background: var(--surface-3); }
+.search-kind {
+  font-size: 9px; font-weight: 650; letter-spacing: .04em;
+  text-transform: uppercase; color: #fff;
+  padding: 2px 0; border-radius: 3px; text-align: center;
+}
+.k-postcode { background: #c74941; }
+.k-place    { background: #1c5cab; }
+.k-branch   { background: #52514e; }
+.search-label {
+  color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.search-detail { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+/* A toolbar button that is toggled off reads as inactive rather than missing. */
+.toolbar button.off { opacity: .55; }
+
+/* ---------- intro / about ---------- */
+#intro {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(11, 11, 11, .42);
+  padding: 24px;
+}
+/* The browser hides [hidden] elements with `display: none` from its own
+   stylesheet, which an id selector setting `display: flex` beats on
+   specificity. Without this rule `intro.hidden = true` sets the property and
+   changes nothing on screen -- the panel cannot be dismissed. */
+#intro[hidden] { display: none !important; }
+.intro-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.24);
+  max-width: 620px; max-height: 100%; overflow-y: auto;
+  padding: 26px 30px 22px;
+}
+.intro-card h2 {
+  margin: 0 0 6px; font-size: 19px; font-weight: 650; letter-spacing: -.01em;
+  text-transform: none; color: var(--text-primary);
+}
+.intro-lead { margin: 0 0 20px; font-size: 13.5px; color: var(--text-secondary); }
+.intro-card h3 {
+  margin: 0 0 10px; font-size: 11px; font-weight: 650;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);
+}
+.intro-points { margin: 0 0 18px; padding-left: 18px; }
+.intro-points li {
+  font-size: 12.5px; line-height: 1.5; color: var(--text-secondary);
+  margin-bottom: 9px;
+}
+.intro-points strong { color: var(--text-primary); }
+.intro-sources {
+  margin: 0 0 20px; font-size: 11px; line-height: 1.5; color: var(--text-muted);
+  padding-top: 14px; border-top: 1px solid var(--border);
+}
+.intro-actions { display: flex; align-items: center; gap: 14px; }
+.intro-actions button {
+  width: auto; padding: 8px 18px; font-size: 13px; font-weight: 600;
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.intro-actions button:hover { filter: brightness(1.08); background: var(--accent); }
+.intro-dismiss {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-muted); cursor: pointer;
+}
+.intro-dismiss input { margin: 0; accent-color: var(--accent); }
+
+/* ---------- narrow screens ---------- */
+/* A fixed 330px sidebar leaves a phone with almost no map. Below this width it
+   becomes a drawer over the map instead of a column beside it, and the map
+   gets the full viewport. */
+#toggle-sidebar { display: none; }
+
+@media (max-width: 900px) {
+  #app { position: relative; }
+
+  #sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    z-index: 30;
+    width: min(330px, 86vw);
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .18);
+  }
+  #sidebar.open { transform: translateX(0); }
+
+  .map-wrap { width: 100%; }
+
+  #toggle-sidebar { display: block; }
+  /* Five labelled buttons will not fit a phone on one row. The drawer toggle
+     drops to its icon and the rest tighten up, which keeps them on one line
+     rather than wrapping "Theme" awkwardly onto a second. */
+  #toggle-sidebar .label-full { display: none; }
+  .toolbar { gap: 4px; }
+  .toolbar button { padding: 6px 7px; font-size: 11px; }
+
+  /* The zoom controls sit top-left, where the drawer slides out from. */
+  .maplibregl-ctrl-top-left { top: 46px; }
+
+  .intro-card { padding: 20px 20px 18px; }
+  .intro-actions { flex-wrap: wrap; gap: 10px; }
+}
