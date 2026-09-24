@@ -80,7 +80,33 @@ const branchState = {
   // 'coverage'    = of GB's people in each band, how many are reached?
   statsMode: 'composition',
   coverageSort: 'coverage',
+  verified: new Set(),   // brands checked against the operator's own list
 };
+
+/* OSM records that a branch exists far more reliably than that one has closed,
+ * so every unverified brand is over-counted -- and by an unknown amount, which
+ * is why this is a marker rather than a correction. Barclays is 421 OSM
+ * records against 211 branches Barclays itself publishes. Until every brand is
+ * checked, a verified one looks smaller than its rivals for the wrong reason,
+ * and the map has to say so wherever brands are compared. */
+function verifiedMark(brand) {
+  if (!branchState.verified.has(brand)) return '';
+  return '<i class="verified" title="Checked against this bank\u2019s own ' +
+    'published branch list; closed records removed">\u2713</i>';
+}
+
+function verifiedNote() {
+  const names = [...branchState.verified];
+  if (!names.length) {
+    return 'Counts come from OpenStreetMap, which records openings far more ' +
+      'reliably than closures, so every brand here is over-counted.';
+  }
+  return '\u2713 ' + names.join(', ') + ' checked against the bank\u2019s own ' +
+    'published list, with closed records removed. Every other brand is ' +
+    'OpenStreetMap only, which records openings far more reliably than ' +
+    'closures &mdash; so the others are over-counted by an unknown amount and ' +
+    'comparisons flatter them.';
+}
 
 function brandColour(brand) {
   return BRAND_COLOURS[brand] || DEFAULT_BRAND_COLOUR;
@@ -386,6 +412,7 @@ async function initBranches() {
 
   branchState.all = payload.branches;
   branchState.brands = payload.brands;
+  branchState.verified = new Set(payload.verified_brands || []);
   // Index by the same key the map features carry, so a clicked pin can be
   // resolved back to its branch record.
   branchState.byKey = new Map(branchState.all.map((b) => [branchKey(b), b]));
@@ -416,7 +443,8 @@ function renderBranchPanel() {
         '<label class="brand-row"><input type="checkbox" value="' + b.brand_group + '"' +
         (branchState.selected.has(b.brand_group) ? ' checked' : '') + '>' +
         '<i class="brand-dot" style="background:' + brandColour(b.brand_group) + '"></i>' +
-        '<span class="brand-name">' + b.brand_group + '</span>' +
+        '<span class="brand-name">' + b.brand_group + verifiedMark(b.brand_group) +
+        '</span>' +
         '<span class="brand-n">' + b.n.toLocaleString('en-GB') + '</span></label>').join('') +
     '</div>' +
     '<div class="weight" style="margin-top:12px">' +
@@ -428,9 +456,8 @@ function renderBranchPanel() {
     '<label class="catchment-toggle"><input type="checkbox" id="catchment-on"' +
       (branchState.active ? ' checked' : '') + '> Show catchment</label>' +
     '<p class="legend-note">' + branchState.all.length.toLocaleString('en-GB') +
-      ' branches from OpenStreetMap (ODbL). Contributed data, not an ' +
-      'authoritative list. Click a pin to measure that branch alone; click the ' +
-      'sea to clear.</p>' +
+      ' branches from OpenStreetMap (ODbL). ' + verifiedNote() +
+      ' Click a pin to measure that branch alone; click the sea to clear.</p>' +
     '<div id="catchment-stats"></div>';
 
   host.querySelector('.brand-list').onchange = (e) => {
@@ -928,7 +955,7 @@ function drawBrandCoverage() {
       r.reach.toFixed(1) + '% of all adults · focus ' + r.lift.toFixed(2) + '×';
     return '<div class="cov-row" title="' + title.replace(/"/g, '&quot;') + '">' +
       '<i class="brand-dot" style="background:' + brandColour(r.brand) + '"></i>' +
-      '<span class="cov-name">' + r.brand + '</span>' +
+      '<span class="cov-name">' + r.brand + verifiedMark(r.brand) + '</span>' +
       '<span class="cov-bar"><i style="width:' + width.toFixed(1) + '%"></i></span>' +
       '<span class="cov-val">' + value + '</span></div>';
   }).join('');
@@ -956,7 +983,12 @@ function drawBrandCoverage() {
         'living in the highest-scoring fifth of the country.') +
     ' Radius follows the catchment slider. Networks overlap heavily, so these ' +
     'shares do not add to 100%. Groups labelled &ldquo;Other&rdquo; and ' +
-    '&ldquo;Unknown&rdquo; are left out.</p>';
+    '&ldquo;Unknown&rdquo; are left out.</p>' +
+    (branchState.verified.size
+      ? '<p class="legend-note warn">Read this ranking with care. ' +
+        verifiedNote() + ' A network with closed branches still counted reaches ' +
+        'further here than it does in life.</p>'
+      : '');
 
   const modes = host.querySelector('.cov-mode');
   if (modes) {

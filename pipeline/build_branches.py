@@ -62,6 +62,32 @@ KM_PER_DEG_LAT = 110.574
 MIN_BRANCHES_FOR_FILTER = 15
 
 
+def drop_closed(out: pd.DataFrame) -> pd.DataFrame:
+    """Remove branches an operator's own list says are no longer there.
+
+    OSM records that a bank has stopped operating are not usually deleted --
+    nobody walks past a closed branch and thinks to edit the map -- so the
+    error is large and one-directional. pipeline/verify_branches.py checks a
+    brand against its operator's published list and writes the ids that no
+    longer correspond to anything. Optional: without the file this is a no-op
+    and the build is exactly as it was."""
+    path = INTERIM / "branch_closures.parquet"
+    if not path.exists():
+        print("\n  no branch_closures.parquet -- nothing verified against an "
+              "operator list (run pipeline/verify_branches.py)")
+        return out
+
+    closures = pd.read_parquet(path)
+    before = len(out)
+    kept = out[~out["osm_id"].isin(set(closures["osm_id"]))]
+    print(f"\n  verified against operator lists: dropped {before - len(kept):,} "
+          f"closed branches")
+    for brand, n in closures.groupby("brand_group").size().items():
+        live = (kept["brand_group"] == brand).sum()
+        print(f"    {brand}: {n:,} closed, {live:,} remain")
+    return kept
+
+
 def load_osm() -> pd.DataFrame:
     payload = json.loads((RAW / OSM_FILE).read_text(encoding="utf-8"))
     rows = []
@@ -378,13 +404,27 @@ def main() -> None:
     joined = disambiguate(joined)
 
     out = joined[["osm_id", "brand", "brand_group", "label", "lat", "lon", "area_code"]]
+
+    # The unfiltered set is written first and kept. verify_branches.py reads it
+    # rather than the filtered file, which would otherwise be circular: run
+    # against its own output, every survivor matches, the closure list comes
+    # back empty and the next build silently restores 230 shut branches.
+    out.to_parquet(INTERIM / "gb_branches_all.parquet", index=False)
+    out = drop_closed(out)
     out.to_parquet(INTERIM / "gb_branches.parquet", index=False)
 
     brands = (out.groupby("brand_group").size().sort_values(ascending=False)
               .rename("n").reset_index())
+
+    closures_path = INTERIM / "branch_closures.parquet"
+    verified = (sorted(pd.read_parquet(closures_path)["brand_group"].unique())
+                if closures_path.exists() else [])
+    brands["verified"] = brands["brand_group"].isin(verified)
+
     payload = {
         "generated": time.strftime("%Y-%m-%d"),
         "attribution": "© OpenStreetMap contributors (ODbL)",
+        "verified_brands": verified,
         "brands": brands.to_dict("records"),
         "branches": [
             {"b": r.brand_group, "n": r.label, "y": round(r.lat, 5),

@@ -125,6 +125,17 @@ Run in order. Each step caches, so re-runs are cheap.
 ./.venv/Scripts/python.exe pipeline/build_roads.py
 ```
 
+Checking a brand against its operator's published list needs `build_branches.py`
+to have run once, and then a second `build_branches.py` to apply the result:
+
+```bash
+./.venv/Scripts/python.exe pipeline/verify_branches.py
+```
+
+```bash
+./.venv/Scripts/python.exe pipeline/build_branches.py
+```
+
 Downloads are cached in `data/raw/` and never re-fetched, so re-runs are cheap
 and work offline.
 
@@ -167,6 +178,7 @@ pipeline/
   build_search.py       postcode chunks + place index -> web/data
   build_connections.py  NaPTAN travel-connections rating -> web/data
   build_roads.py        OS Open Roads major-road overlay -> web/data
+  verify_branches.py    operator branch lists -> closures -> web/data
 data/
   raw/                  downloaded sources, cached
   interim/              harmonised intermediates (parquet)
@@ -591,12 +603,77 @@ Individual networks differ measurably. Barclays' 421 branches reach 13.1m adults
 of whom **3.4%** are on £100k+ — a network that skews noticeably more affluent
 than the branch estate as a whole.
 
+### Verifying against the operator's own list
+
+OSM records that a branch *exists* far more reliably than that one has *stopped*
+existing: nobody walks past a shuttered bank and thinks to edit the map. The
+error is therefore large, and it is one-directional.
+
+Barclays is the clearest case. OSM carried **421** Barclays features in GB.
+Barclays publishes **211** branches. Only four of the OSM records carried a
+`disused:` or `abandoned:` tag, so tag-based filtering would have removed four
+of the roughly 230 that had gone.
+
+`pipeline/verify_branches.py` reads the operator's own list and deletes what no
+longer matches:
+
+1. Barclays' sitemap — named in their `robots.txt`, which disallows nothing
+   under `/branch-finder/` — lists every branch page. One request.
+2. Each branch page is fetched once and cached, and only the **postcode** is
+   taken. The pages carry no JSON-LD and no coordinates; the address is a `<p>`
+   of `<br />`-separated lines ending in the postcode.
+3. Postcodes are geocoded from the ONSPD lookup the project already holds, so
+   no external geocoder is involved. Belfast, Jersey, Guernsey and the Isle of
+   Man drop out here, correctly — the map is GB only.
+4. Each published branch is matched to at most one OSM record, greedily by
+   distance. One-to-one matters: OSM often carries both a node and the building
+   way for the same branch, and letting two records claim one live branch would
+   quietly keep a duplicate alive.
+
+**421 → 191.** Nine matches in ten land within 80 m, and the threshold only has
+to settle the tail. Every candidate beyond 250 m was read by hand:
+
+| Distance | Published | OSM record | Same branch? |
+|---|---|---|---|
+| 281 m | Chancery Lane, 326–328 High Holborn | Hatton Garden, Camden | yes |
+| 458 m | Richmond, 8 George Street | George Street, London | yes |
+| 614 m | Moorgate, 120 Moorgate | Ironmonger Lane, City of London | no |
+| 1,288 m | Welwyn Garden City, Howardsgate | Ludwick Way | no |
+| 1,453 m | South Shields, King Street | North Shields | no |
+
+500 m is the gap between the last true pair and the first false one. Erring low
+is not the safe direction: too tight deletes a branch that is open, too loose
+keeps one that is shut.
+
+**It removes; it never adds.** 16 published branches have no OSM record at all
+and stay missing — this step has no licence to mint points from Barclays' data
+and no coordinates to mint them from, since postcode centroids are not branch
+locations. 191 is a floor on accuracy, not a guarantee of it.
+
+**Nothing from Barclays is redistributed.** The published layer stays
+OSM-derived and ODbL; the operator's list is used to delete records, not to
+create them. See [ATTRIBUTION.md](ATTRIBUTION.md).
+
+### One verified brand is its own problem
+
+Correcting Barclays alone makes Barclays look worse than its rivals for the
+wrong reason. Its network coverage of GB's £100k+ adults at 10 km drops from
+82.1% to **73.1%** — not because the branches moved, but because the others are
+still counted with their closures in. Every brand here is over-counted; only
+one has been checked.
+
+So the app marks it rather than hiding it. Verified brands carry a ✓ in the
+filter list and in the network coverage table, and the coverage table carries a
+standing warning that a network with closed branches still counted reaches
+further on the chart than it does in life. `LENDERS`-style registries are the
+fix — each bank needs its own scraper, and the pipeline step is written to take
+more.
+
 ### Caveats
 
 - **OSM is contributed, not authoritative.** Good in towns, patchier in rural
-  areas, and slow to reflect closures — and UK branches have been closing fast.
-  Treat counts as indicative. An internal branch list would be strictly better
-  and the importer is a small change.
+  areas, and slow to reflect closures — which is what `verify_branches.py`
+  exists to correct, so far for one brand out of twenty-five.
 - **ODbL, not OGL.** This is the one non-open-government source in the project.
   Share-alike obligations attach to derived databases, which matters if output
   containing this layer leaves the organisation. It is deliberately isolated in

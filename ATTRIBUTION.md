@@ -70,6 +70,36 @@ that is entirely OGL. You lose branch catchments and city labels.
 
 ---
 
+## Operators' own branch lists — used to delete, never to publish
+
+**One input, no output: `pipeline/verify_branches.py`.**
+
+Barclays publishes a branch finder. The project reads it to answer one question
+about records it already has — *is this branch still open?* — and deletes the
+ones that are not.
+
+| What is taken | What is done with it |
+|---|---|
+| The sitemap that `robots.txt` names, which disallows nothing under `/branch-finder/` | Enumerate branch pages, one request |
+| One postcode per branch page, fetched once and cached | Decide whether an existing OSM record still corresponds to something |
+
+Nothing is redistributed. No coordinate, address, name or opening hour from
+Barclays reaches `web/data/gb_branches.json`; the branch layer remains
+OSM-derived and ODbL, with closed entries removed. The cached pages stay in
+`data/raw/`, which is gitignored.
+
+This is deliberately a narrower use than the postcode lending data below, and
+the difference is the point. There, values would have been published. Here, a
+publicly advertised fact about which shops are open is used to remove stale
+records from somebody else's database — which improves the accuracy of what is
+published without adding anything to it.
+
+If that ever changes — if branch coordinates start coming from an operator
+rather than from OSM — the licensing question changes with it and has to be
+asked again.
+
+---
+
 ## The modelled figures are ours, not the sources'
 
 The income band estimates are **modelled output**, not published statistics. No
