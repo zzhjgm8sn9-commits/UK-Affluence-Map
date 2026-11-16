@@ -35,7 +35,7 @@ LOCAL_ASSET = re.compile(r'(src|href)="(?!https?:|//)([^"?]+\.(?:js|css))"')
 
 REQUIRED = [
     "index.html", "app.js", "branches.js", "config.js", "roads.js", "scenario.js",
-    "search.js", "style.css",
+    "search.js", "style.css", "travel.js", "data/gb_travel.json",
     "data/gb_areas.json", "data/gb_metrics.json", "data/gb_income.json",
     "data/gb_branches.json", "data/gb_places.json", "data/gb_search.json",
     "data/gb_roads.json",

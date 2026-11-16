@@ -49,7 +49,7 @@ function scenarioNetwork() {
 function reachOf(branches) {
   const n = state.codes.length;
   const covered = new Uint8Array(n);
-  for (const b of branches) markCovered(b.y, b.x, branchState.radiusKm, covered);
+  coverInto(branches, covered);
   const adults = state.values.adults;
   const high = state.values.n_100k_plus;
   let a = 0, h = 0;
@@ -218,9 +218,9 @@ function renderScenario() {
     (base.length ? '“Now” is the ticked brands as they stand. '
                  : 'No brands are ticked, so “Now” is empty and the scenario ' +
                    'is measured on its own. ') +
-    'Reach is everyone within ' + branchState.radiusKm.toFixed(1) + ' km of any branch, ' +
-    'counted once. Straight-line distance, modelled incomes: a way to compare ' +
-    'options, not a forecast of customers.</p>';
+    'Reach is everyone within ' + reachPhrase() + ' of any branch, counted once. ' +
+    (branchState.reach === 'distance' ? 'Straight-line distance' : 'Estimated travel time') +
+    ', modelled incomes: a way to compare options, not a forecast of customers.</p>';
 
   host.innerHTML = html;
   wireScenario(host);

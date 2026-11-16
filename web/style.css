@@ -313,6 +313,8 @@ input.num::-webkit-inner-spin-button { margin-left: 2px; }
   padding-left: 8px; margin-top: 9px;
 }
 
+.reach-mode { margin: 12px 0 8px; }
+
 /* ---------- scenario ---------- */
 #scenario:empty { display: none; }
 #scenario button:disabled { opacity: .45; cursor: default; }

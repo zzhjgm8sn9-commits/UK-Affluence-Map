@@ -178,6 +178,7 @@ pipeline/
   build_search.py       postcode chunks + place index -> web/data
   build_connections.py  NaPTAN travel-connections rating -> web/data
   build_roads.py        OS Open Roads major-road overlay -> web/data
+  build_traveltime.py   drive and walk time graph from OS Open Roads -> web/data
   verify_branches.py    operator branch lists -> closures -> web/data
 data/
   raw/                  downloaded sources, cached
@@ -748,6 +749,50 @@ would need its own route in, and Yorkshire publishes no usable sitemap.
 - **Radius, not drive time.** A circle is a poor model of a real catchment where
   rivers, motorways and rail lines distort access. Drive-time isochrones would
   need a routing engine (self-hosted OSRM or Valhalla).
+
+## Travel-time catchments
+
+Catchments can be measured three ways: straight-line distance, drive time, or
+walk time. A radius does not know about rivers, estuaries or motorways; time on
+the road network does.
+
+The site is static, so nothing is routed on demand. `pipeline/build_traveltime.py`
+builds a small graph from OS Open Roads (3.3 million junctions, 4.0 million
+links) that the browser searches itself:
+
+- **Nodes**: one per small area — the junction nearest its centroid — plus,
+  for driving, 8,212 "hubs" on motorways and primary A roads.
+- **Edges**: exact travel times on the full network between nearby nodes,
+  pruned to the hops a shortest path would actually use (519,000 for driving,
+  165,000 for walking).
+
+A catchment is one shortest-path search from every branch at once, stopped at
+the time limit. It takes about 20 ms for a 300-branch network and about 120 ms
+for every brand, so it works for a dragged scenario branch and for the coverage
+table alike. The 14.6 MB file (3 MB or so compressed) is fetched the first time
+a travel-time mode is chosen.
+
+**How good is it?** Two separate questions.
+
+*Stitching.* A long trip is assembled from hops, which could force it through
+area centroids. Checked against exact times from 40 origins: the median error
+is +0.0% under 10 minutes and +1.7% at 30–45 minutes, with nine trips in ten
+within about 8%. The hubs are what keep motorway journeys honest.
+
+*Speeds.* These are the real limit. Times are free-flowing estimates from road
+class, slower in built-up areas (judged by junction density) and slower again
+in dense ones. Tuned against eight journeys whose typical times I supplied
+from general knowledge rather than a measured source — Leeds–York,
+Manchester–Liverpool, Charing Cross–Croydon and so on — the model lands
+within about 10% of each. Treat a "15-minute" catchment as roughly 15 minutes
+off-peak, not as a sat-nav figure.
+
+**What it leaves out**: traffic and time of day, one-way streets and turn
+restrictions (Open Roads does not record them), and ferries — islands are
+reachable only from themselves. Walking is network distance at 4.8 km/h on
+everything but motorways, and is coarse at this resolution: an area is in or
+out by one point, and a 10-minute walk covers only a handful of areas. Public
+transport is not modelled.
 
 ## Scenario branches
 

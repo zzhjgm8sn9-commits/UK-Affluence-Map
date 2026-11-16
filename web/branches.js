@@ -68,6 +68,9 @@ const branchState = {
   selected: new Set(),
   focusedKeys: new Set(),  // individually clicked branches, in click order
   radiusKm: 10,
+  driveMin: 15,
+  walkMin: 10,
+  reach: 'distance',  // 'distance' | 'drive' | 'walk'
   active: false,
   grid: null,         // cell key -> array of area indices
   ax: null,           // area centroid x, km
@@ -208,7 +211,7 @@ function catchmentBranches() {
 function computeCatchment(branches) {
   const n = state.codes.length;
   const covered = new Uint8Array(n);
-  for (const b of branches) markCovered(b.y, b.x, branchState.radiusKm, covered);
+  coverInto(branches, covered);
 
   const bandArrays = (state.bandLabels || []).map((_, k) => state.values['band_' + k]);
   const adults = state.values.adults;
@@ -371,8 +374,10 @@ function refreshBranchLayers() {
 
   // Drawing thousands of overlapping rings is slow and unreadable; past the cap
   // the dimming of areas outside the catchment carries the message instead.
+  // A travel-time catchment is not a circle, so none is drawn: the areas left
+  // at full strength are the catchment.
   const showCircles = branchState.active && measured.length > 0 &&
-                      measured.length <= MAX_CIRCLES;
+                      measured.length <= MAX_CIRCLES && branchState.reach === 'distance';
   map.getSource('catchment').setData(showCircles
     ? { type: 'FeatureCollection',
         features: measured.map((b) => circlePolygon(b.y, b.x, branchState.radiusKm)) }
@@ -464,11 +469,17 @@ function renderBranchPanel() {
         '</span>' +
         '<span class="brand-n">' + b.n.toLocaleString('en-GB') + '</span></label>').join('') +
     '</div>' +
-    '<div class="weight" style="margin-top:12px">' +
-      '<div class="weight-head"><span class="label">Catchment radius</span>' +
-      numberField('radius-num', branchState.radiusKm, 0.5, 40, 0.5, 'km') + '</div>' +
-      '<input type="range" id="radius" min="0.5" max="40" step="0.5" value="' +
-        branchState.radiusKm + '">' +
+    '<div class="stats-mode reach-mode">' +
+      Object.entries({ distance: 'Distance', drive: 'Drive', walk: 'Walk' }).map(([k, v]) =>
+        '<button type="button" data-reach="' + k + '"' +
+        (branchState.reach === k ? ' class="on"' : '') + '>' + v + '</button>').join('') +
+    '</div>' +
+    '<div class="weight">' +
+      '<div class="weight-head"><span class="label">' + reachMode().label + '</span>' +
+      numberField('radius-num', reachValue(), reachMode().min, reachMode().max,
+                  reachMode().step, reachMode().unit) + '</div>' +
+      '<input type="range" id="radius" min="' + reachMode().min + '" max="' +
+        reachMode().max + '" step="' + reachMode().step + '" value="' + reachValue() + '">' +
     '</div>' +
     '<label class="catchment-toggle"><input type="checkbox" id="catchment-on"' +
       (branchState.active ? ' checked' : '') + '> Show catchment</label>' +
@@ -498,11 +509,26 @@ function renderBranchPanel() {
     branchState.focusedKeys.clear();
     renderBranchPanel(); refreshBranchLayers();
   };
-  const setRadius = (km, echoTo) => {
-    branchState.radiusKm = km;
-    if (echoTo !== 'slider') host.querySelector('#radius').value = String(km);
-    if (echoTo !== 'number') host.querySelector('#radius-num').value = String(km);
+  const mode = reachMode();
+  const setRadius = (v, echoTo) => {
+    branchState[mode.field] = v;
+    if (echoTo !== 'slider') host.querySelector('#radius').value = String(v);
+    if (echoTo !== 'number') host.querySelector('#radius-num').value = String(v);
     refreshCatchment();
+  };
+
+  host.querySelector('.reach-mode').onclick = (e) => {
+    const btn = e.target.closest('button');
+    if (!btn || btn.dataset.reach === branchState.reach) return;
+    const apply = () => {
+      branchState.reach = btn.dataset.reach;
+      renderBranchPanel();
+      refreshBranchLayers();
+      renderBrandCoverage();
+    };
+    // The travel-time graph is fetched the first time it is wanted.
+    if (btn.dataset.reach === 'distance') apply();
+    else loadTravel().then((ok) => { if (ok) apply(); });
   };
 
   host.querySelector('#radius').oninput = (e) => {
@@ -512,12 +538,12 @@ function renderBranchPanel() {
     // Ignore half-typed values rather than snapping the map to 0.5 km while
     // someone is still reaching for the second digit.
     const v = Number(e.target.value);
-    if (e.target.value === '' || !Number.isFinite(v) || v < 0.5 || v > 40) return;
+    if (e.target.value === '' || !Number.isFinite(v) || v < mode.min || v > mode.max) return;
     setRadius(v, 'number');
   };
   host.querySelector('#radius-num').onchange = (e) => {
-    const v = clampTo(Math.round(Number(e.target.value) * 2) / 2, 0.5, 40,
-                      branchState.radiusKm);
+    const v = clampTo(Math.round(Number(e.target.value) / mode.step) * mode.step,
+                      mode.min, mode.max, reachValue());
     e.target.value = String(v);
     setRadius(v);
   };
@@ -592,7 +618,7 @@ function renderCatchmentStats(branches) {
     : fmt.count(above100k) + ' (' + headline.toFixed(1) + '%)';
 
   const rows = [
-    ['Radius', branchState.radiusKm.toFixed(1) + ' km'],
+    [reachMode().label, reachPhrase()],
     ['Branches', branches.length.toLocaleString('en-GB')],
     ...connectionRows(focused, branches),
     ['Small areas covered', t.areas.toLocaleString('en-GB')],
@@ -813,11 +839,11 @@ const TARGET_NOUNS = {
   cars_2plus: 'residents in households with two or more cars',
 };
 
-const coverageCache = { radius: null, masks: null };
+const coverageCache = { radius: null, masks: null };   // `radius` holds reachKey()
 let coverageTimer = null;
 
 function brandCoverageMasks() {
-  if (coverageCache.masks && coverageCache.radius === branchState.radiusKm) {
+  if (coverageCache.masks && coverageCache.radius === reachKey()) {
     return coverageCache.masks;
   }
   const n = state.codes.length;
@@ -825,11 +851,17 @@ function brandCoverageMasks() {
   for (const b of branchState.all) {
     if (COVERAGE_EXCLUDE.has(b.b)) continue;
     let m = masks.get(b.b);
-    if (!m) { m = new Uint8Array(n); masks.set(b.b, m); }
-    markCovered(b.y, b.x, branchState.radiusKm, m);
+    if (!m) { m = []; masks.set(b.b, m); }
+    m.push(b);
+  }
+  // One search per brand, from all of its branches at once.
+  for (const [brand, list] of masks) {
+    const mask = new Uint8Array(n);
+    coverInto(list, mask);
+    masks.set(brand, mask);
   }
   coverageCache.masks = masks;
-  coverageCache.radius = branchState.radiusKm;
+  coverageCache.radius = reachKey();
   return masks;
 }
 
@@ -924,9 +956,9 @@ function renderBrandCoverage() {
 
   // The first pass at a new radius walks all 4,698 branches; render the
   // heading now and do the work off the paint, or the slider stutters.
-  if (!coverageCache.masks || coverageCache.radius !== branchState.radiusKm) {
+  if (!coverageCache.masks || coverageCache.radius !== reachKey()) {
     host.innerHTML = coverageHeading() + '<p class="empty">Measuring every ' +
-      'network within ' + branchState.radiusKm.toFixed(1) + ' km&hellip;</p>';
+      'network within ' + reachPhrase() + '&hellip;</p>';
     clearTimeout(coverageTimer);
     coverageTimer = setTimeout(() => { brandCoverageMasks(); drawBrandCoverage(); }, 20);
     return;
@@ -992,7 +1024,7 @@ function drawBrandCoverage() {
         'branches sit where those people are concentrated rather than simply ' +
         'wherever there are people.'
       : 'Share of GB&rsquo;s ' + target.noun + ' within ' +
-        branchState.radiusKm.toFixed(1) + ' km of a branch of each brand.') +
+        reachPhrase() + ' of a branch of each brand.') +
     '</p>' +
     '<div class="cov-list">' + list + '</div>' +
     '<p class="legend-note">' + (target.exact
