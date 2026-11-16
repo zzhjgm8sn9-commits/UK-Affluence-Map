@@ -11,5 +11,5 @@
  * (https://dashboard.basemaps.carto.com/) rather than treating it as a secret.
  */
 window.APP_CONFIG = {
-  cartoKey: '',
+  cartoKey: 'cb1_5age_1_64a6a18cf320c39f1dc1e101',
 };
