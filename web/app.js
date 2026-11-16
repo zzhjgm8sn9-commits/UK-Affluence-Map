@@ -1285,16 +1285,31 @@ function basemapTiles(style) {
 const OWN_LABEL_LAYERS = ['place-labels', 'place-labels-minor'];
 let roadsBeforeBasemap = null;
 
-function setBasemap(on) {
+let basemapRefused = false;
+
+function setBasemap(on, quiet) {
   // Without a key CARTO serves every tile stamped "API KEY REQUIRED", which
   // is worse than no street map. Say what is missing instead of drawing it.
   if (on && !(window.APP_CONFIG || {}).cartoKey) {
-    setStatus('The street map needs a free CARTO key. Add it to config.js.');
-    setTimeout(() => setStatus(null), 4500);
+    if (!quiet) {
+      setStatus('The street map needs a free CARTO key. Add it to config.js.');
+      setTimeout(() => setStatus(null), 4500);
+    }
+    return;
+  }
+  if (on && basemapRefused) {
+    if (!quiet) {
+      setStatus('The street map key is not valid for this address.');
+      setTimeout(() => setStatus(null), 4500);
+    }
     return;
   }
   state.basemap = on;
   $('#toggle-base').classList.toggle('on', on);
+  // Our own road overlay is the stand-in for a street map, so its button only
+  // means something while the street map is off.
+  const roadsBtn = $('#toggle-roads');
+  if (roadsBtn) roadsBtn.hidden = on;
 
   if (on) {
     const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright" ' +
@@ -1428,6 +1443,17 @@ async function main() {
       const places = roads.then(() =>
         (typeof initPlaces === 'function') ? initPlaces() : undefined);
       places.then(() => {
+        // The street map is the default view. The key is tied to the published
+        // address, so anywhere else -- a local copy, say -- the tiles are
+        // refused; the first refusal switches back to our own roads and
+        // labels rather than leaving the shading over a blank background.
+        map.on('error', (e) => {
+          if (state.basemap && e && e.sourceId && e.sourceId.startsWith('carto-')) {
+            basemapRefused = true;
+            setBasemap(false);
+          }
+        });
+        setBasemap(true, true);
         if (typeof initBranches === 'function') initBranches();
         if (typeof initSearch === 'function') initSearch();
       });
