@@ -1413,6 +1413,17 @@ async function main() {
 
   state.bboxes = indexBoundingBoxes(geojson);
 
+  // Each area's rings, by row. No copy: these are the arrays the map source
+  // already holds. Used to trace the outer edge of a catchment.
+  state.rings = new Array(state.codes.length);
+  for (const f of geojson.features) {
+    const i = state.index.get(f.properties.area_code);
+    const g = f.geometry;
+    if (i === undefined || !g) continue;
+    state.rings[i] = g.type === 'Polygon' ? g.coordinates
+                   : g.type === 'MultiPolygon' ? g.coordinates.flat() : [];
+  }
+
   map.on('load', () => {
     addLayers(geojson);
 

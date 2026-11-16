@@ -310,6 +310,17 @@ function addBranchLayers() {
     source: 'catchment',
     paint: { 'fill-color': '#0b0b0b', 'fill-opacity': 0.06 },
   });
+  // The outer edge of a travel-time catchment. Fading the areas outside it
+  // is too quiet on its own, especially over the street map.
+  map.addSource('catchment-edge', { type: 'geojson', data: emptyCollection() });
+  map.addLayer({
+    id: 'catchment-edge',
+    type: 'line',
+    source: 'catchment-edge',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#0b0b0b',
+             'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 10, 1.8, 14, 2.6] },
+  });
   map.addLayer({
     id: 'catchment-line',
     type: 'line',
@@ -384,6 +395,7 @@ function refreshBranchLayers() {
     : emptyCollection());
 
   applyCatchmentDimming(measured);
+  scheduleCatchmentEdge();
   renderCatchmentStats(measured);
   if (typeof renderScenario === 'function') renderScenario();
 }
@@ -415,6 +427,54 @@ function applyCatchmentDimming(branches) {
   lastCovered = covered;
   state.dimming = true;
   applyAreaOpacity();
+}
+
+/* The outline of the covered areas, without merging any polygons.
+ *
+ * The boundaries were simplified as a coverage, so two neighbouring areas
+ * share their common edge point for point. An edge that belongs to two covered
+ * areas is therefore interior, and one that belongs to exactly one is the
+ * catchment's edge: count the segments, keep the ones seen once. That is a
+ * pass over the covered areas' coordinates rather than a polygon union, which
+ * for thirteen thousand areas would take seconds.
+ *
+ * Still too slow to do on every step of a dragged slider, so it runs once the
+ * catchment has stopped changing. */
+let edgeTimer = null;
+
+function scheduleCatchmentEdge() {
+  clearTimeout(edgeTimer);
+  const src = map.getSource('catchment-edge');
+  if (!src) return;
+  const wanted = branchState.active && branchState.reach !== 'distance' &&
+                 branchState.lastTotals && state.rings;
+  if (!wanted) { src.setData(emptyCollection()); return; }
+  edgeTimer = setTimeout(() => src.setData(catchmentEdge(branchState.covered)), 140);
+}
+
+function catchmentEdge(covered) {
+  const seen = new Map();
+  for (let i = 0; i < covered.length; i++) {
+    if (!covered[i]) continue;
+    const rings = state.rings[i];
+    if (!rings) continue;
+    for (const ring of rings) {
+      for (let k = 1; k < ring.length; k++) {
+        const a = ring[k - 1], b = ring[k];
+        // Direction-independent key: the two areas walk a shared edge in
+        // opposite directions.
+        const first = a[0] < b[0] || (a[0] === b[0] && a[1] <= b[1]);
+        const key = first ? a[0] + ',' + a[1] + ',' + b[0] + ',' + b[1]
+                          : b[0] + ',' + b[1] + ',' + a[0] + ',' + a[1];
+        if (seen.has(key)) seen.set(key, null);
+        else seen.set(key, [a, b]);
+      }
+    }
+  }
+  const lines = [];
+  for (const seg of seen.values()) if (seg) lines.push(seg);
+  return { type: 'Feature', properties: {},
+           geometry: { type: 'MultiLineString', coordinates: lines } };
 }
 
 /* -------------------------------- UI -------------------------------- */
