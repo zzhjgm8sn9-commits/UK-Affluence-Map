@@ -199,7 +199,10 @@ function focusedBranches() {
  *  any have been clicked, otherwise every branch of the ticked brands. */
 function catchmentBranches() {
   const focused = focusedBranches();
-  return focused.length ? focused : selectedBranches();
+  if (focused.length) return focused;
+  // With a scenario in play the measured network is the changed one: proposed
+  // branches in, closed branches out.
+  return typeof scenarioNetwork === 'function' ? scenarioNetwork() : selectedBranches();
 }
 
 function computeCatchment(branches) {
@@ -338,6 +341,9 @@ function addBranchLayers() {
       'icon-ignore-placement': true,
       'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.42, 9, 0.62, 13, 0.9],
     },
+    // A branch closed in the scenario stays on the map as a ghost, so it is
+    // clear what was taken out and it can still be clicked.
+    paint: { 'icon-opacity': ['case', ['boolean', ['get', 'closed'], false], 0.28, 1] },
   });
 }
 
@@ -353,6 +359,8 @@ function refreshBranchLayers() {
         id: b.x + ',' + b.y + ',' + b.n,
         brand: b.b, name: b.n, area_code: b.a, pin: pinId(b.b),
         connections: b.c == null ? null : b.c,
+        closed: typeof scenarioState !== 'undefined' &&
+                scenarioState.closed.has(branchKey(b)),
       },
       geometry: { type: 'Point', coordinates: [b.x, b.y] },
     })),
@@ -372,6 +380,7 @@ function refreshBranchLayers() {
 
   applyCatchmentDimming(measured);
   renderCatchmentStats(measured);
+  if (typeof renderScenario === 'function') renderScenario();
 }
 
 function branchKey(b) {
@@ -381,9 +390,9 @@ function branchKey(b) {
 let lastCovered = null;
 
 function applyCatchmentDimming(branches) {
-  const hoverFull = ['boolean', ['feature-state', 'hover'], false];
   if (!branchState.active || !branches.length) {
-    map.setPaintProperty('areas-fill', 'fill-opacity', ['case', hoverFull, 1, 0.88]);
+    state.dimming = false;
+    applyAreaOpacity();
     branchState.lastTotals = null;
     return;
   }
@@ -399,8 +408,8 @@ function applyCatchmentDimming(branches) {
       { covered: covered[i] === 1 });
   }
   lastCovered = covered;
-  map.setPaintProperty('areas-fill', 'fill-opacity',
-    ['case', hoverFull, 1, ['boolean', ['feature-state', 'covered'], false], 0.92, 0.12]);
+  state.dimming = true;
+  applyAreaOpacity();
 }
 
 /* -------------------------------- UI -------------------------------- */
@@ -433,6 +442,7 @@ async function initBranches() {
   attachBranchInteractions();
   refreshBranchLayers();
   renderBrandCoverage();
+  if (typeof initScenario === 'function') initScenario();
 }
 
 function renderBranchPanel() {
@@ -742,6 +752,7 @@ function attachBranchInteractions() {
   });
 
   map.on('click', 'branch-points', (e) => {
+    if (typeof scenarioOwnsClick === 'function' && scenarioOwnsClick(e)) return;
     const f = e.features && e.features[0];
     if (!f) return;
     // Look up by the feature's own id, never by its coordinates: MapLibre
@@ -766,6 +777,7 @@ function attachBranchInteractions() {
   // A click that lands on neither a pin nor an area -- the sea, or off the
   // coast -- clears whatever was selected.
   map.on('click', (e) => {
+    if (typeof scenarioOwnsClick === 'function' && scenarioOwnsClick(e)) return;
     const hits = map.queryRenderedFeatures(e.point,
       { layers: ['branch-points', 'areas-fill'] });
     if (!hits.length) clearAllSelection();

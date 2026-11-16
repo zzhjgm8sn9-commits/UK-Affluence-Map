@@ -749,6 +749,36 @@ would need its own route in, and Yorkshire publishes no usable sitemap.
   rivers, motorways and rail lines distort access. Drive-time isochrones would
   need a routing engine (self-hosted OSRM or Valhalla).
 
+## Scenario branches
+
+`web/scenario.js` lets you test a change to a network instead of only
+describing it. "Open a branch" arms one click on the map and drops a draggable
+marker; clicking existing pins and "Close selected" takes them out. The panel
+then shows the ticked brands as they stand beside the same network with the
+changes made: branches, adults reached, and adults on £100k+, each with the
+difference.
+
+The number that matters is incremental. Each proposed branch is credited only
+with the £100k+ adults it adds that nothing else in the scenario already
+reaches — the scenario with it, less the scenario without it — because its own
+catchment would double-count everyone an existing branch covers.
+
+Scenarios live in the page and are gone on reload. They use the same
+straight-line radius and modelled incomes as everything else, so they compare
+options; they do not forecast customers.
+
+## Street map
+
+The "Basemap" button draws CARTO's Voyager street map in two raster layers:
+streets under the shading, street and place names over it, with the shading
+thinning as you zoom in. It needs a CARTO Basemaps API key in `web/config.js`
+(free by e-mail from <https://carto.com/basemaps/apikey/>; commercial use is
+free up to 1 million tile requests a month). Without a key CARTO stamps every
+tile "API KEY REQUIRED", so the button shows a message instead.
+
+A key in a web page is public by nature. Restrict it to the site's address in
+the CARTO dashboard rather than treating it as a secret.
+
 ## Roads
 
 At national zoom the place labels are enough. Zoom in and the map goes abstract

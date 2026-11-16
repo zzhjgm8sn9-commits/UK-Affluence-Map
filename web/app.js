@@ -59,6 +59,7 @@ const state = {
   scaleMode: 'value',  // 'value' = class by amount, 'rank' = class by quantile
   scaleUsed: 'rank',   // which of the two actually produced state.breaks
   basemap: false,
+  dimming: false,      // areas outside a catchment are faded
   selection: [],       // area codes, in click order
 };
 
@@ -657,6 +658,7 @@ function attachInteractions() {
   map.on('mouseenter', 'areas-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
 
   map.on('click', 'areas-fill', (e) => {
+    if (typeof scenarioOwnsClick === 'function' && scenarioOwnsClick(e)) return;
     const feature = e.features && e.features[0];
     if (!feature) return;
     toggleArea(feature.id);
@@ -1262,25 +1264,93 @@ function attachToolbar() {
     };
   }
 
-  $('#toggle-base').onclick = () => {
-    state.basemap = !state.basemap;
-    if (state.basemap) {
-      map.addSource('carto', {
-        type: 'raster',
-        tiles: ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-                'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png'],
-        tileSize: 256,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      });
-      map.addLayer({ id: 'carto', type: 'raster', source: 'carto' }, 'areas-fill');
-      map.setPaintProperty('areas-fill', 'fill-opacity', 0.72);
-    } else {
-      if (map.getLayer('carto')) map.removeLayer('carto');
-      if (map.getSource('carto')) map.removeSource('carto');
-      map.setPaintProperty('areas-fill', 'fill-opacity',
-        ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0.88]);
+  $('#toggle-base').onclick = () => setBasemap(!state.basemap);
+}
+
+/* ---------------------------- street map ---------------------------- */
+
+/* The street map is two raster layers rather than one: streets underneath the
+ * shading, and street and place names on top of it. A single layer under an
+ * opaque choropleth is either unreadable or forces the shading so thin that
+ * the colours stop meaning anything; names above the fill stay legible at any
+ * opacity. */
+function basemapTiles(style) {
+  const key = (window.APP_CONFIG || {}).cartoKey;
+  const query = key ? '?key=' + encodeURIComponent(key) : '';
+  return ['a', 'b', 'c'].map((s) =>
+    'https://' + s + '.basemaps.cartocdn.com/rastertiles/' + style +
+    '/{z}/{x}/{y}@2x.png' + query);
+}
+
+const OWN_LABEL_LAYERS = ['place-labels', 'place-labels-minor'];
+let roadsBeforeBasemap = null;
+
+function setBasemap(on) {
+  // Without a key CARTO serves every tile stamped "API KEY REQUIRED", which
+  // is worse than no street map. Say what is missing instead of drawing it.
+  if (on && !(window.APP_CONFIG || {}).cartoKey) {
+    setStatus('The street map needs a free CARTO key. Add it to config.js.');
+    setTimeout(() => setStatus(null), 4500);
+    return;
+  }
+  state.basemap = on;
+  $('#toggle-base').classList.toggle('on', on);
+
+  if (on) {
+    const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright" ' +
+      'target="_blank" rel="noopener">OpenStreetMap</a> contributors, &copy; ' +
+      '<a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>';
+    map.addSource('carto-base', { type: 'raster', tileSize: 256, attribution,
+      tiles: basemapTiles('voyager_nolabels') });
+    map.addSource('carto-labels', { type: 'raster', tileSize: 256,
+      tiles: basemapTiles('voyager_only_labels') });
+    map.addLayer({ id: 'carto-base', type: 'raster', source: 'carto-base' }, 'areas-fill');
+    map.addLayer({ id: 'carto-labels', type: 'raster', source: 'carto-labels' },
+      map.getLayer('catchment-fill') ? 'catchment-fill' : undefined);
+  } else {
+    for (const id of ['carto-base', 'carto-labels']) {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
     }
-  };
+  }
+
+  // The street map brings its own roads and names; drawing ours over them
+  // doubles every label. They come back when it is switched off.
+  for (const id of OWN_LABEL_LAYERS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible');
+  }
+  if (typeof setRoadsVisible === 'function') {
+    if (on) {
+      roadsBeforeBasemap = roadState.visible;
+      setRoadsVisible(false);
+    } else if (roadsBeforeBasemap !== null) {
+      setRoadsVisible(roadsBeforeBasemap);
+      roadsBeforeBasemap = null;
+    }
+    const btn = $('#toggle-roads');
+    if (btn) btn.classList.toggle('off', !roadState.visible);
+  }
+
+  applyAreaOpacity();
+}
+
+/* One place decides how opaque the shading is, because three things bear on
+ * it at once -- hover, catchment dimming and the street map -- and when each
+ * set the paint property for itself, whichever ran last silently undid the
+ * others. With the street map on, the shading thins as you zoom in: at city
+ * scale the colours carry the message, at street scale the streets do.
+ * (`zoom` has to be the input of a top-level interpolate, so the per-area
+ * logic goes inside each stop.) */
+function applyAreaOpacity() {
+  if (!map || !map.getLayer('areas-fill')) return;
+  const hover = ['boolean', ['feature-state', 'hover'], false];
+  const covered = ['boolean', ['feature-state', 'covered'], false];
+  const at = (base) => (state.dimming
+    ? ['case', hover, Math.min(1, base + 0.1), covered, base, 0.1]
+    : ['case', hover, Math.min(1, base + 0.12), base]);
+  map.setPaintProperty('areas-fill', 'fill-opacity', state.basemap
+    ? ['interpolate', ['linear'], ['zoom'], 8, at(0.8), 12, at(0.6), 15, at(0.42)]
+    : at(state.dimming ? 0.92 : 0.88));
 }
 
 /* ------------------------------ boot ------------------------------ */
