@@ -148,7 +148,10 @@ function accessNodes(lat, lon, mode) {
 function markReachable(branches, mode, minutes, covered) {
   const g = travelState.graphs[mode];
   const limit = minutes * 60;
-  const dist = new Float32Array(g.n).fill(Infinity);
+  // Float64, not Float32. The heap holds times as doubles; stored in 32 bits
+  // they round, and a time that rounded *down* then failed the "is this heap
+  // entry stale?" test below, so about half of all nodes were dropped mid-search.
+  const dist = new Float64Array(g.n).fill(Infinity);
   const heap = makeHeap();
   for (const b of branches) {
     for (const [secs, node] of accessNodes(b.y, b.x, mode)) {
